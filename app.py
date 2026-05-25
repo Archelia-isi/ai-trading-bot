@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from ui.components import render_sidebar, render_metrics, render_fake_chart, render_kill_switch
+from core.capital_api import CapitalComAPI
 
 # Configurazione base della pagina Streamlit
 st.set_page_config(
@@ -18,13 +19,18 @@ def main():
     # Inizializza variabili di stato
     if 'bot_running' not in st.session_state:
         st.session_state.bot_running = False
+        
+    if 'capital_api' not in st.session_state:
+        api = CapitalComAPI()
+        api.authenticate()
+        st.session_state.capital_api = api
 
     # Renderizzazione Sidebar (Profilo di rischio e Start/Stop)
     profilo_selezionato = render_sidebar()
 
-    # Sezione Metriche (Fittizie per ora, le collegheremo alle API nella Fase 2)
+    # Sezione Metriche
     st.markdown("### 📊 Panoramica Portafoglio (Demo)")
-    render_metrics()
+    render_metrics(st.session_state.capital_api)
 
     # Grafico PnL
     st.markdown("### 📈 Andamento Profitti/Perdite")

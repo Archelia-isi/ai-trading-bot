@@ -43,13 +43,14 @@ def render_sidebar():
             
         return profilo
 
-def render_metrics():
+def render_metrics(api):
     """Renderizza i KPI del portafoglio"""
+    saldo = api.get_account_balance()
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Saldo (Paper Trading)", "€ 10,000.00", "+€ 0.00")
+    col1.metric("Saldo (Paper Trading)", f"€ {saldo:,.2f}", "")
     col2.metric("Posizioni Aperte", "0", "")
     col3.metric("Drawdown Attuale", "0.00%", "-")
-    col4.metric("Ultimo Sentiment (Gemini)", "N/A", "")
+    col4.metric("Ultimo Sentiment", "In attesa...", "")
 
 def render_fake_chart():
     """Renderizza un grafico fittizio per il PnL per testare la UI"""
