@@ -1,0 +1,22 @@
+# File di ambiente (MAI CARICARE ONLINE)
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Ambienti virtuali
+venv/
+env/
+.venv/
+
+# Streamlit
+.streamlit/
+
+# IDEs
+.vscode/
+.idea/
+.cursorrules
