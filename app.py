@@ -58,7 +58,7 @@ def main():
         with st.spinner("🌍 Ricerca Web degli Asset Caldi tramite Google Search Grounding..."):
             
             # 1. Discovery
-            trending_assets_names = st.session_state.discovery.get_trending_assets(max_assets=3)
+            trending_assets_names = st.session_state.discovery.get_trending_assets()
             st.write(f"**Asset individuati dalle news:** {', '.join(trending_assets_names)}")
             
             # 2. Iterazione sugli asset scoperti

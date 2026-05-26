@@ -21,9 +21,9 @@ class MarketDiscovery:
             except Exception as e:
                 logger.error(f"Errore inizializzazione Discovery Model: {e}")
 
-    def get_trending_assets(self, max_assets=2) -> list:
+    def get_trending_assets(self) -> list:
         """
-        Interroga Gemini chiedendogli di scansionare il web e trovare gli asset più caldi.
+        Interroga Gemini chiedendogli di scansionare il web e trovare tutti gli asset più caldi.
         Restituisce una lista di nomi stringa.
         """
         if not self.model:
@@ -32,11 +32,13 @@ class MarketDiscovery:
             
         prompt = f"""
         Scandaglia il web per le ultimissime notizie finanziarie in tempo reale a livello globale.
-        Individua esattamente {max_assets} asset finanziari (azioni, criptovalute, materie prime) che sono attualmente 
-        sotto i riflettori a causa di notizie fresche e dirompenti (es. tweet di Elon Musk, IPO, scandali, trimestrali, crisi politiche).
+        Individua TUTTI gli asset finanziari (azioni, criptovalute, materie prime) che sono attualmente 
+        sotto i riflettori a causa di notizie fresche e dirompenti o che presentano un fortissimo potenziale di volatilità 
+        oggi (es. tweet di Elon Musk, IPO, scandali, trimestrali, crisi politiche, adozioni di massa).
+        Non c'è un limite: restituiscimi tutti quelli che ritieni abbiano potenziale reale in base alle notizie di oggi.
         Devi restituire ESCLUSIVAMENTE un array JSON valido contenente solo i nomi comuni di questi asset in inglese o italiano.
         Non aggiungere alcun testo prima o dopo l'array JSON, non usare formattazione markdown.
-        Esempio: ["Tesla", "Bitcoin"]
+        Esempio: ["Tesla", "Bitcoin", "NVIDIA", "SpaceX", "Oro"]
         """
         
         try:
