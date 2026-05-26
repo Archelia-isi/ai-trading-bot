@@ -55,7 +55,7 @@ def render_metrics(api):
 def render_fake_chart():
     """Renderizza un grafico fittizio per il PnL per testare la UI"""
     # Generiamo un grafico fittizio per dare l'idea della dashboard
-    date_rng = pd.date_range(start='2023-01-01', end='2023-01-10', freq='H')
+    date_rng = pd.date_range(start='2023-01-01', end='2023-01-10', freq='h')
     df = pd.DataFrame(date_rng, columns=['Data'])
     df['PnL Cumulativo (€)'] = np.random.randn(len(date_rng)).cumsum() * 100 + 10000
     
