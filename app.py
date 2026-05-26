@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from ui.components import render_sidebar, render_metrics, render_fake_chart, render_kill_switch
 import time
+import random
 from core.capital_api import CapitalComAPI
 from core.gemini_sentiment import GeminiSentimentAnalyzer
 from core.quant_engine import QuantEngine
@@ -52,9 +53,18 @@ def main():
         st.markdown("### 🔄 Esecuzione Motore in corso...")
         with st.spinner("Analisi Gemini e Quant Engine in funzione..."):
             
-            # Parametri fittizi per la simulazione (in un caso reale verrebbero presi dai WebSocket Capital)
-            asset_target = "Bitcoin (BTC)"
-            prezzo_attuale = 65000.0
+            # Universo di Asset (Crypto, Forex, Azioni, Materie Prime)
+            ASSETS_UNIVERSE = [
+                "Bitcoin (BTC)", "Ethereum (ETH)", "Solana (SOL)", "Ripple (XRP)", "Cardano (ADA)",
+                "Apple (AAPL)", "Tesla (TSLA)", "NVIDIA (NVDA)", "Microsoft (MSFT)", "Amazon (AMZN)",
+                "EUR/USD", "GBP/USD", "USD/JPY",
+                "Oro (GOLD)", "Petrolio (WTI)", "Argento (SILVER)",
+                "S&P 500", "NASDAQ 100", "Dow Jones"
+            ]
+            asset_target = random.choice(ASSETS_UNIVERSE)
+            
+            # Prezzo fittizio (verrebbe preso dalle API WebSocket in un ambiente reale)
+            prezzo_attuale = round(random.uniform(100.0, 70000.0), 2)
             
             # 1. Chiamata a Gemini per il Sentiment
             sentiment = st.session_state.gemini.analyze_market_sentiment(asset_target)
