@@ -26,19 +26,18 @@ class GeminiSentimentAnalyzer:
                 logger.error(f"Errore inizializzazione Gemini: {e}")
                 self.model = None
 
-    def analyze_market_sentiment(self, asset_name: str, historical_data: list = None) -> dict:
+    def analyze_market_sentiment(self, asset_name: str, historical_data: list = None, finbert_data: dict = None, xgboost_prob: float = None) -> dict:
         """
-        Analizza il sentiment di un asset tramite Gemini, incrociandolo con la price action storica.
+        Analizza il sentiment finale incrociando FinBERT, XGBoost, Price Action e Web Search.
         """
         if self.model is None:
             logger.info(f"Esecuzione analisi sentiment simulata per {asset_name} (chiave mancante).")
-            return {"score": 50, "conviction": 1, "allocation_percentage": 5, "asset_risk": "LOW", "motivazione": "Mock"}
+            return {"score": 50, "conviction": 1, "allocation_percentage": 5, "leverage_multiplier": 1, "asset_risk": "LOW", "motivazione": "Mock"}
 
-        # Formatta lo storico dei prezzi in modo leggibile per l'LLM
         history_str = "Dati storici non disponibili."
         if historical_data:
             lines = []
-            for h in historical_data[-12:]: # Mostriamo le ultime 12 ore per non saturare il prompt
+            for h in historical_data[-12:]:
                 time = h.get('snapshotTimeUTC')
                 op = h.get('openPrice', {}).get('bid', 0)
                 cp = h.get('closePrice', {}).get('bid', 0)
@@ -46,28 +45,35 @@ class GeminiSentimentAnalyzer:
                 lp = h.get('lowPrice', {}).get('bid', 0)
                 lines.append(f"[{time}] Open:{op} High:{hp} Low:{lp} Close:{cp}")
             history_str = "\n".join(lines)
+            
+        finbert_str = f"Label: {finbert_data.get('label', 'unknown')} | Confidence: {finbert_data.get('score', 0):.2f}" if finbert_data else "Nessun dato FinBERT."
+        xgb_str = f"{xgboost_prob * 100:.1f}% di probabilità statistica di rialzo oggi" if xgboost_prob is not None else "Nessun dato XGBoost."
 
         prompt = f"""
-        Sei un Analista Quantitativo Elite di un Hedge Fund ad alta frequenza.
-        Devi decidere se investire sull'asset: {asset_name}
+        Sei il Comitato d'Investimento (Analista Elite) di un Hedge Fund.
+        Devi deliberare l'investimento sull'asset: {asset_name}
         
-        DATI STORICI (Ultime 12 Ore - Candele Orarie UTC):
+        REPORT DEI SUB-MODELLI AI:
+        1. FinBERT (Sentiment NLP su News Headline): {finbert_str}
+        2. XGBoost (Modello Matematico su Storico 1 Anno): {xgb_str}
+        
+        DATI STORICI RECENTI (Ultime 12 Ore - Candele UTC):
         {history_str}
         
         ATTIVITA' RICHIESTA:
-        1. Usa lo strumento Google Search per trovare le ultimissime news su questo asset.
-        2. Confronta le news appena uscite con l'andamento del prezzo storico fornito sopra. 
-           (Es: La news è ottima, ma il prezzo è già salito troppo nelle ultime ore? Allora il trend è vecchio, scartalo. 
-           La news è ottima e il prezzo sta appena curvando al rialzo? Compralo).
-        3. Decidi l'esatta percentuale di capitale da allocare per questo trade in base alla solidità dell'analisi.
+        1. Usa Google Search se ritieni di dover approfondire la motivazione del Sentiment di FinBERT.
+        2. Pesa matematicamente il risultato di XGBoost (se > 50% è bullish tecnicamente) con il momentum delle news.
+        3. Decidi l'esatta percentuale di capitale da allocare.
+        4. Decidi il Moltiplicatore di Leva Finanziaria (da 1 a 10). Se FinBERT e XGBoost sono fortemente in accordo su un asset a bassa volatilità (es. indici), usa leva alta. Altrimenti leva bassa.
         
-        Devi restituire ESCLUSIVAMENTE un JSON valido con questa esatta struttura:
+        Restituisci ESCLUSIVAMENTE un JSON valido con questa struttura:
         {{
-            "score": <intero da 0 a 100, dove 0 è sell forte, 50 neutro, 100 è buy speculativo assoluto>,
-            "conviction": <intero da 1 a 10, dove 10 significa che il setup news+grafico è perfetto>,
-            "allocation_percentage": <intero da 1 a 20, rappresenta la % di portafoglio da investire su questo singolo trade>,
-            "asset_risk": "<stringa 'HIGH' o 'LOW'. Usa 'HIGH' per crypto/meme, 'LOW' per indici/megacap>",
-            "motivazione": "<stringa breve che giustifica l'analisi speculativa incrociando news e grafico>"
+            "score": <0-100, dove 100 è buy estremo>,
+            "conviction": <1-10>,
+            "allocation_percentage": <1-30, % portafoglio>,
+            "leverage_multiplier": <1-10, leva da applicare al broker>,
+            "asset_risk": "<HIGH o LOW>",
+            "motivazione": "<Breve giustificazione che cita FinBERT e XGBoost>"
         }}
         """
         

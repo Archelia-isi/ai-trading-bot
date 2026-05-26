@@ -9,6 +9,8 @@ from core.gemini_sentiment import GeminiSentimentAnalyzer
 from core.quant_engine import QuantEngine
 from core.database import DatabaseManager
 from core.notifier import TelegramNotifier
+from core.finbert_model import FinBERTModel
+from core.xgboost_model import XGBoostEngine
 from core.market_discovery import MarketDiscovery
 
 # Configurazione base della pagina Streamlit
@@ -44,6 +46,12 @@ def main():
         st.session_state.notifier = TelegramNotifier()
         
     st.session_state.discovery = MarketDiscovery()
+    
+    if 'finbert' not in st.session_state:
+        st.session_state.finbert = FinBERTModel()
+        
+    if 'xgboost_engine' not in st.session_state:
+        st.session_state.xgboost_engine = XGBoostEngine()
     
     # Memoria HFT
     if 'open_positions' not in st.session_state:
@@ -148,23 +156,39 @@ def main():
                 st.warning(f"⚠️ Limite 95% di Esposizione Raggiunto! (Equity: €{equity}, Free: €{available}). Il bot attende che il Trailing Stop liberi capitale.")
             else:
                 # 1. Discovery
-                trending_assets_names = st.session_state.discovery.get_trending_assets()
-                st.write(f"**Asset individuati dalle news:** {', '.join(trending_assets_names)}")
+                trending_assets = st.session_state.discovery.get_trending_assets()
                 
                 # 2. Iterazione sugli asset scoperti
-                for raw_asset_name in trending_assets_names:
+                for item in trending_assets:
                     # Ricontrolla il margine prima di ogni acquisto
                     margin_info = st.session_state.capital_api.get_margin_info()
                     if margin_info.get("available", 0) < (margin_info.get("equity", 1) * 0.05):
                         st.warning("Limite Margine 95% raggiunto durante gli acquisti. Pausa.")
                         break
                         
-                    st.markdown(f"#### Analisi: {raw_asset_name}")
+                    if isinstance(item, dict):
+                        asset_name = item.get("asset", "Sconosciuto")
+                        headline = item.get("headline", asset_name)
+                    else:
+                        asset_name = str(item)
+                        headline = asset_name
+                        
+                    st.markdown(f"#### Analisi: {asset_name}")
+                    st.write(f"**Headline:** {headline}")
+                    
+                    # L1: FinBERT NLP Scanner
+                    finbert_res = st.session_state.finbert.analyze_news_sentiment(headline)
+                    st.write(f"**FinBERT Sentiment**: {finbert_res['label'].upper()} ({finbert_res['score']:.2f})")
+                    
+                    # Scartiamo i neutrali
+                    if finbert_res['label'] == 'neutral' or finbert_res['score'] < 0.6:
+                        st.warning(f"❌ Scartato da FinBERT (Segnale Debole/Neutro).")
+                        continue
                     
                     # Cerca lo strumento su Capital.com
-                    instrument = st.session_state.capital_api.search_instrument(raw_asset_name)
+                    instrument = st.session_state.capital_api.search_instrument(asset_name)
                     if not instrument:
-                        st.warning(f"L'asset '{raw_asset_name}' non è stato trovato su Capital.com. Saltato.")
+                        st.warning(f"L'asset '{asset_name}' non è stato trovato su Capital.com. Saltato.")
                         continue
                     
                     epic = instrument['epic']
@@ -172,11 +196,21 @@ def main():
                     prezzo_attuale = st.session_state.capital_api.get_market_price(epic)
                     st.write(f"↳ Match su Capital.com: **{clean_name}** ({epic}) a €{prezzo_attuale}")
                     
-                    # Recupera lo storico dei prezzi (24 ore) per l'Analisi Quantitativa
+                    # L2: XGBoost Mathematical Analyst
+                    with st.spinner("⏳ Addestramento XGBoost in corso (1 anno storico)..."):
+                        xgb_prob = st.session_state.xgboost_engine.calculate_probability(clean_name)
+                    st.write(f"**XGBoost Prob. Rialzo**: {xgb_prob * 100:.1f}%")
+                    
+                    # Recupera lo storico dei prezzi breve (24 ore) per Gemini
                     historical_prices = st.session_state.capital_api.get_historical_prices(epic, hours=24)
                     
-                    # 3. Sentiment & Quant (Incrocio News + Price Action)
-                    sentiment = st.session_state.gemini.analyze_market_sentiment(clean_name, historical_data=historical_prices)
+                    # L3: Gemini (Il Comitato)
+                    sentiment = st.session_state.gemini.analyze_market_sentiment(
+                        clean_name, 
+                        historical_data=historical_prices,
+                        finbert_data=finbert_res,
+                        xgboost_prob=xgb_prob
+                    )
                     
                     score = sentiment.get("score", 50)
                     conviction = sentiment.get("conviction", 1)

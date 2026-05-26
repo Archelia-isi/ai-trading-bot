@@ -23,19 +23,23 @@ class MarketDiscovery:
             return ["Bitcoin", "Tesla"]
             
         prompt = """
-        Scandaglia il web per le ultimissime notizie finanziarie in tempo reale a livello globale.
-        Il tuo compito è individuare TUTTI gli asset finanziari (azioni, criptovalute, materie prime, forex) che sono
-        attualmente al centro di "Catalizzatori Istituzionali" estremamente potenti e verificati.
+        Scandaglia il web tramite Google Search per le ultimissime notizie finanziarie in tempo reale a livello globale.
+        Il tuo compito è individuare TUTTI gli asset finanziari (azioni, criptovalute, materie prime) che sono
+        attualmente al centro di "Catalizzatori Istituzionali" estremamente potenti.
         
         REGOLE FERREE:
-        1. NON C'È ALCUN LIMITE NUMERICO: se ci sono 20 asset eccezionali, restituiscili tutti. Se ce ne sono 0, restituisci un array vuoto [].
-        2. FILTRO QUALITATIVO ESTREMO: Scarta categoricamente rumors, speculazioni deboli, hype passeggero su social media e notizie già scontate dal mercato.
-        3. Cerca SOLO: Trimestrali clamorose (sorprese assolute), acquisizioni o fusioni milionarie, rivoluzioni tecnologiche confermate, shock macroeconomici o geopolitici severi, breakout storici certificati.
+        1. NON C'È ALCUN LIMITE NUMERICO: se ci sono 50 asset eccezionali, restituiscili tutti.
+        2. FILTRO: Cerca Trimestrali clamorose, acquisizioni milionarie, rivoluzioni tecnologiche, shock macroeconomici.
         
-        Devi restituire ESCLUSIVAMENTE un array JSON valido contenente solo i nomi comuni di questi asset in inglese o italiano.
+        Devi restituire ESCLUSIVAMENTE un array JSON di oggetti. Ogni oggetto deve contenere il nome dell'asset e il titolo della notizia principale (in inglese o italiano).
         Non aggiungere alcun testo prima o dopo l'array JSON.
-        Esempio: ["Tesla", "NVIDIA", "Oro", "Bitcoin", "Apple"]
+        Esempio:
+        [
+            {"asset": "NVIDIA", "headline": "Nvidia smashes earnings expectations, announces stock split"},
+            {"asset": "Bitcoin", "headline": "SEC approves new spot Bitcoin ETF, institutional inflows surge"}
+        ]
         """
+        
         
         try:
             logger.info("🌍 Avvio scansione web globale per ricerca asset caldi (via REST API)...")
@@ -61,15 +65,15 @@ class MarketDiscovery:
                     
                 assets = json.loads(text)
                 if isinstance(assets, list) and len(assets) > 0:
-                    logger.info(f"🎯 Asset scoperti dalle news: {assets}")
+                    logger.info(f"🎯 Asset scoperti dalle news: {len(assets)}")
                     return assets
                 else:
                     logger.warning("Formato JSON inatteso. Uso fallback.")
-                    return ["Bitcoin", "Tesla"]
+                    return [{"asset": "Bitcoin", "headline": "Fallback headline"}]
             else:
                 logger.error(f"Errore REST API Gemini: {response.text}")
-                return ["Bitcoin", "Tesla"]
+                return [{"asset": "Bitcoin", "headline": "Fallback headline"}]
                 
         except Exception as e:
-            logger.error(f"Errore critico durante il Market Discovery (Possibile rate limit o crash REST API): {e}")
-            return ["Bitcoin", "Tesla"]
+            logger.error(f"Errore critico durante il Market Discovery: {e}")
+            return [{"asset": "Bitcoin", "headline": "Fallback headline"}]
