@@ -1,15 +1,15 @@
 import logging
-import yfinance as yf
 import pandas as pd
 import numpy as np
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
+from core.capital_api import CapitalComAPI
 
 logger = logging.getLogger(__name__)
 
 class XGBoostEngine:
     def __init__(self):
-        logger.info("Modulo XGBoost inizializzato.")
+        logger.info("Modulo XGBoost inizializzato (Sorgente Dati: Capital.com).")
 
     def add_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calcola indicatori tecnici di base per alimentare l'IA Matematica."""
@@ -36,69 +36,69 @@ class XGBoostEngine:
         df['Returns'] = df['Close'].pct_change()
         
         # Target: 1 se il prezzo CHIUDE più in alto del prezzo di APERTURA del giorno SUCCESSIVO
-        # Spostiamo indietro di 1 giorno per avere il target sulle feature di oggi
         df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
         
+        # Fill NaN iniziale invece di droppare tutto (salviamo i dati dove possibile)
+        df = df.fillna(method='bfill')
         return df.dropna()
 
-    def get_yahoo_ticker(self, asset_name: str) -> str:
-        """Cerca il ticker Yahoo Finance corretto a partire dal nome dell'azienda."""
-        try:
-            import requests
-            url = f"https://query2.finance.yahoo.com/v1/finance/search"
-            params = {"q": asset_name, "quotesCount": 1, "newsCount": 0}
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-            
-            # Eccezione per criptovalute più comuni
-            if "bitcoin" in asset_name.lower() or "btc" in asset_name.lower(): return "BTC-USD"
-            if "ethereum" in asset_name.lower() or "eth" in asset_name.lower(): return "ETH-USD"
-            
-            res = requests.get(url, params=params, headers=headers, timeout=5)
-            if res.status_code == 200:
-                data = res.json()
-                if "quotes" in data and len(data["quotes"]) > 0:
-                    return data["quotes"][0]["symbol"]
-        except Exception as e:
-            logger.error(f"Errore ricerca ticker Yahoo per {asset_name}: {e}")
-        return asset_name
-
-    def calculate_probability(self, asset_name: str) -> float:
+    def calculate_probability(self, epic: str, capital_api: CapitalComAPI) -> float:
         """
-        Scarica 1 anno di storico tramite yfinance, addestra XGBoost e restituisce
+        Scarica 1 anno di storico tramite Capital.com API, addestra XGBoost e restituisce
         la probabilità (0-1) di una candela verde imminente.
         """
         try:
-            # Ricerca rapida del ticker Yahoo Finance
-            ticker_symbol = self.get_yahoo_ticker(asset_name)
-            logger.info(f"XGBoost: Trovato Ticker Yahoo '{ticker_symbol}' per l'asset '{asset_name}'")
+            logger.info(f"XGBoost: Download dati storici (250gg) per EPIC '{epic}' da Capital.com...")
             
-            ticker_obj = yf.Ticker(ticker_symbol)
+            # 1. Recupero Dati da Capital.com (Resolution=DAY, max=250)
+            url = f"{capital_api.base_url}/prices/{epic}?resolution=DAY&max=250"
+            res = capital_api._requests_get(url)
             
-            # Scarichiamo 1 anno di dati giornalieri
-            df = ticker_obj.history(period="1y")
+            if not res or res.status_code != 200:
+                logger.error(f"XGBoost: Impossibile scaricare storico da Capital.com per {epic}")
+                return 0.5
+                
+            prices_data = res.json().get('prices', [])
+            if len(prices_data) < 50:
+                logger.warning(f"XGBoost: Dati storici insufficienti ({len(prices_data)} giorni) per {epic}.")
+                return 0.5
+                
+            # 2. Conversione in DataFrame
+            rows = []
+            for p in prices_data:
+                rows.append({
+                    'Open': p.get('openPrice', {}).get('bid', 0),
+                    'High': p.get('highPrice', {}).get('bid', 0),
+                    'Low': p.get('lowPrice', {}).get('bid', 0),
+                    'Close': p.get('closePrice', {}).get('bid', 0),
+                    'Volume': p.get('lastTradedVolume', 0)
+                })
+                
+            df = pd.DataFrame(rows)
             
-            if df.empty or len(df) < 50:
-                logger.warning(f"XGBoost: Dati storici insufficienti per {asset_name} su Yahoo Finance.")
-                return 0.5 # Neutrale
+            # Se la colonna Volume è tutta a 0 (comune per CFD/Forex su Capital), la togliamo dalle feature
+            has_volume = df['Volume'].sum() > 0
 
+            # 3. Indicatori Tecnici
             df = self.add_technical_indicators(df)
             
-            if len(df) < 100:
-                 logger.warning(f"XGBoost: Pochi dati validi per l'addestramento su {asset_name}.")
+            if len(df) < 50:
+                 logger.warning(f"XGBoost: Pochi dati post-pulizia per {epic}.")
                  return 0.5
             
-            # Feature ed Etichette
-            features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_10', 'SMA_50', 'MACD', 'Signal_Line', 'RSI', 'Returns']
-            X = df[features][:-1] # Escludiamo l'ultimo giorno per l'addestramento (il target non è noto)
+            # Feature ed Etichette Dinamiche
+            features = ['Open', 'High', 'Low', 'Close', 'SMA_10', 'SMA_50', 'MACD', 'Signal_Line', 'RSI', 'Returns']
+            if has_volume:
+                features.append('Volume')
+                
+            X = df[features][:-1]
             y = df['Target'][:-1]
             
-            # Dati di oggi per prevedere domani
             X_today = df[features].iloc[-1:]
             
-            # Divisione train/test
+            # 4. Addestramento Modello
             X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
             
-            # Modello XGBoost Classifier
             model = xgb.XGBClassifier(
                 n_estimators=100, 
                 max_depth=3, 
@@ -109,11 +109,11 @@ class XGBoostEngine:
             
             model.fit(X_train, y_train)
             
-            # Calcolo probabilità per oggi
-            prob = model.predict_proba(X_today)[0][1] # Probabilità della classe 1 (Rialzo)
+            # 5. Previsione
+            prob = model.predict_proba(X_today)[0][1]
             
             return float(prob)
             
         except Exception as e:
-            logger.error(f"XGBoost Fallito per {asset_name}: {e}")
+            logger.error(f"XGBoost Fallito per {epic}: {e}")
             return 0.5

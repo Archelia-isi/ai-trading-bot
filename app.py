@@ -196,9 +196,9 @@ def main():
                     prezzo_attuale = st.session_state.capital_api.get_market_price(epic)
                     st.write(f"↳ Match su Capital.com: **{clean_name}** ({epic}) a €{prezzo_attuale}")
                     
-                    # L2: XGBoost Mathematical Analyst
+                    # L2: XGBoost Mathematical Analyst (Usa dati Capital.com diretti)
                     with st.spinner("⏳ Addestramento XGBoost in corso (1 anno storico)..."):
-                        xgb_prob = st.session_state.xgboost_engine.calculate_probability(clean_name)
+                        xgb_prob = st.session_state.xgboost_engine.calculate_probability(epic, st.session_state.capital_api)
                     st.write(f"**XGBoost Prob. Rialzo**: {xgb_prob * 100:.1f}%")
                     
                     # Recupera lo storico dei prezzi breve (24 ore) per Gemini
