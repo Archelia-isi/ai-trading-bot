@@ -26,26 +26,48 @@ class GeminiSentimentAnalyzer:
                 logger.error(f"Errore inizializzazione Gemini: {e}")
                 self.model = None
 
-    def analyze_market_sentiment(self, asset_name: str, news_context: str = "") -> dict:
+    def analyze_market_sentiment(self, asset_name: str, historical_data: list = None) -> dict:
         """
-        Analizza il sentiment di un asset tramite Gemini e restituisce uno score da 1 a 100.
+        Analizza il sentiment di un asset tramite Gemini, incrociandolo con la price action storica.
         """
         if self.model is None:
             logger.info(f"Esecuzione analisi sentiment simulata per {asset_name} (chiave mancante).")
-            return {"score": 50, "motivazione": "API Key mancante, restituito valore neutrale simulato (50)."}
+            return {"score": 50, "conviction": 1, "allocation_percentage": 5, "asset_risk": "LOW", "motivazione": "Mock"}
+
+        # Formatta lo storico dei prezzi in modo leggibile per l'LLM
+        history_str = "Dati storici non disponibili."
+        if historical_data:
+            lines = []
+            for h in historical_data[-12:]: # Mostriamo le ultime 12 ore per non saturare il prompt
+                time = h.get('snapshotTimeUTC')
+                op = h.get('openPrice', {}).get('bid', 0)
+                cp = h.get('closePrice', {}).get('bid', 0)
+                hp = h.get('highPrice', {}).get('bid', 0)
+                lp = h.get('lowPrice', {}).get('bid', 0)
+                lines.append(f"[{time}] Open:{op} High:{hp} Low:{lp} Close:{cp}")
+            history_str = "\n".join(lines)
 
         prompt = f"""
-        Sei un analista quantitativo di un Hedge Fund speculativo ad alta frequenza (Day Trading).
-        Analizza il sentiment e il potenziale speculativo odierno per l'asset: {asset_name}
-        Considera le ultimissime notizie globali, i social media e l'hype del mercato.
+        Sei un Analista Quantitativo Elite di un Hedge Fund ad alta frequenza.
+        Devi decidere se investire sull'asset: {asset_name}
+        
+        DATI STORICI (Ultime 12 Ore - Candele Orarie UTC):
+        {history_str}
+        
+        ATTIVITA' RICHIESTA:
+        1. Usa lo strumento Google Search per trovare le ultimissime news su questo asset.
+        2. Confronta le news appena uscite con l'andamento del prezzo storico fornito sopra. 
+           (Es: La news è ottima, ma il prezzo è già salito troppo nelle ultime ore? Allora il trend è vecchio, scartalo. 
+           La news è ottima e il prezzo sta appena curvando al rialzo? Compralo).
+        3. Decidi l'esatta percentuale di capitale da allocare per questo trade in base alla solidità dell'analisi.
         
         Devi restituire ESCLUSIVAMENTE un JSON valido con questa esatta struttura:
         {{
-            "score": <intero da 0 a 100, dove 0 è panic selling estremo, 50 è neutro, 100 è buy speculativo assoluto>,
-            "conviction": <intero da 1 a 10, dove 10 significa che la notizia è esplosiva e l'aumento/crollo è quasi certo oggi>,
-            "leverage_multiplier": <intero da 1 a 10, che rappresenta la leva finanziaria consigliata. 10x per trade ultra sicuri, 1x se incerto>,
-            "asset_risk": "<stringa 'HIGH' o 'LOW'. Usa 'HIGH' per crypto, meme stocks, small cap. Usa 'LOW' per indici, megacap tech, oro>",
-            "motivazione": "<stringa breve che giustifica l'analisi speculativa per il day trading>"
+            "score": <intero da 0 a 100, dove 0 è sell forte, 50 neutro, 100 è buy speculativo assoluto>,
+            "conviction": <intero da 1 a 10, dove 10 significa che il setup news+grafico è perfetto>,
+            "allocation_percentage": <intero da 1 a 20, rappresenta la % di portafoglio da investire su questo singolo trade>,
+            "asset_risk": "<stringa 'HIGH' o 'LOW'. Usa 'HIGH' per crypto/meme, 'LOW' per indici/megacap>",
+            "motivazione": "<stringa breve che giustifica l'analisi speculativa incrociando news e grafico>"
         }}
         """
         

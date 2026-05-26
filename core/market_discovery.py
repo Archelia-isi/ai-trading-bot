@@ -24,13 +24,17 @@ class MarketDiscovery:
             
         prompt = """
         Scandaglia il web per le ultimissime notizie finanziarie in tempo reale a livello globale.
-        Individua TUTTI gli asset finanziari (azioni, criptovalute, materie prime) che sono attualmente 
-        sotto i riflettori a causa di notizie fresche e dirompenti o che presentano un fortissimo potenziale di volatilità 
-        oggi (es. tweet di Elon Musk, IPO, scandali, trimestrali, crisi politiche, adozioni di massa).
-        Non c'è un limite: restituiscimi tutti quelli che ritieni abbiano potenziale reale in base alle notizie di oggi.
+        Il tuo compito è individuare TUTTI gli asset finanziari (azioni, criptovalute, materie prime, forex) che sono
+        attualmente al centro di "Catalizzatori Istituzionali" estremamente potenti e verificati.
+        
+        REGOLE FERREE:
+        1. NON C'È ALCUN LIMITE NUMERICO: se ci sono 20 asset eccezionali, restituiscili tutti. Se ce ne sono 0, restituisci un array vuoto [].
+        2. FILTRO QUALITATIVO ESTREMO: Scarta categoricamente rumors, speculazioni deboli, hype passeggero su social media e notizie già scontate dal mercato.
+        3. Cerca SOLO: Trimestrali clamorose (sorprese assolute), acquisizioni o fusioni milionarie, rivoluzioni tecnologiche confermate, shock macroeconomici o geopolitici severi, breakout storici certificati.
+        
         Devi restituire ESCLUSIVAMENTE un array JSON valido contenente solo i nomi comuni di questi asset in inglese o italiano.
-        Non aggiungere alcun testo prima o dopo l'array JSON, non usare formattazione markdown.
-        Esempio: ["Tesla", "Bitcoin", "NVIDIA", "SpaceX", "Oro"]
+        Non aggiungere alcun testo prima o dopo l'array JSON.
+        Esempio: ["Tesla", "NVIDIA", "Oro", "Bitcoin", "Apple"]
         """
         
         try:

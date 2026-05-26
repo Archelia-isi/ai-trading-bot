@@ -43,13 +43,15 @@ class QuantEngine:
             logger.info(f"⚖️ Nessun segnale forte per {asset} (Score: {sentiment_score})")
             return None
 
-        # Sizing Dinamico: Base = 0.5% * Conviction (da 1 a 10) -> max 5% base (Margine)
-        base_pct = (conviction * 0.5) / 100.0
+        # Sizing Dinamico guidato ESCLUSIVAMENTE dall'Analista Quantitativo (Gemini)
+        allocation_percentage = sentiment_data.get("allocation_percentage", 5) # Default 5%
         
-        # Moltiplicatore di Profilo in base al Rischio Intrinseco
+        # Aggiustiamo il tiro con il profilo di rischio per non renderlo troppo spericolato
         multiplier = profile["multi_high"] if asset_risk == "HIGH" else profile["multi_low"]
-        margin_pct = base_pct * multiplier
-        margin_pct = min(margin_pct, 0.20) # Max 20% margin per trade
+        margin_pct = (allocation_percentage / 100.0) * multiplier
+        
+        # Non permettiamo mai di investire più del 30% in un singolo colpo, per prudenza
+        margin_pct = min(margin_pct, 0.30)
 
         balance = self.api.get_account_balance()
         if balance <= 0:
