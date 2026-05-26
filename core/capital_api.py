@@ -91,6 +91,37 @@ class CapitalComAPI:
             logger.error(f"Errore nel recupero posizioni: {e}")
             return []
 
+    def get_margin_info(self) -> dict:
+        """Restituisce equity e margine disponibile per calcolare l'esposizione."""
+        if not self.is_authenticated:
+            return {"equity": 10000.0, "available": 10000.0}
+        try:
+            response = requests.get(f"{self.base_url}/accounts", headers=self._get_headers(with_auth=True), timeout=10)
+            if response.status_code == 200:
+                accounts = response.json().get('accounts', [])
+                if accounts:
+                    bal = accounts[0].get('balance', {})
+                    return {
+                        "equity": float(bal.get('balance', 0.0)),
+                        "available": float(bal.get('available', 0.0))
+                    }
+            return {"equity": 0.0, "available": 0.0}
+        except:
+            return {"equity": 0.0, "available": 0.0}
+
+    def get_historical_prices(self, epic: str, hours: int = 24) -> list:
+        """Recupera le ultime N candele orarie per l'analisi quantitativa dell'AI."""
+        if not self.is_authenticated:
+            return []
+        try:
+            url = f"{self.base_url}/prices/{epic}?resolution=HOUR&max={hours}"
+            response = requests.get(url, headers=self._get_headers(with_auth=True), timeout=10)
+            if response.status_code == 200:
+                return response.json().get('prices', [])
+            return []
+        except:
+            return []
+
     def search_instrument(self, search_term: str):
         """Cerca un EPIC (simbolo) su Capital.com partendo da un nome comune."""
         if not self.is_authenticated:
@@ -212,6 +243,22 @@ class CapitalComAPI:
             return False
         except Exception as e:
             logger.error(f"Errore durante la chiusura posizioni per {epic}: {e}")
+            return False
+
+    def close_position_by_deal_id(self, deal_id: str) -> bool:
+        """Chiude una posizione specifica bypassando il check dell'epic (Evita Rate Limit)."""
+        if not self.is_authenticated:
+            return True
+        try:
+            del_resp = requests.delete(f"{self.base_url}/positions/{deal_id}", headers=self._get_headers(with_auth=True), timeout=10)
+            if del_resp.status_code == 200:
+                logger.info(f"✅ Posizione {deal_id} chiusa con successo.")
+                return True
+            else:
+                logger.error(f"❌ Errore chiusura posizione {deal_id}: {del_resp.text}")
+                return False
+        except Exception as e:
+            logger.error(f"Errore: {e}")
             return False
 
     def get_market_hours(self, epic: str) -> dict:

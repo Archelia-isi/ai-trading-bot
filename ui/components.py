@@ -177,9 +177,13 @@ def render_kill_switch():
             pos_aperte = st.session_state.capital_api.get_all_positions()
             chiuse = 0
             for p in pos_aperte:
-                epic = p.get('market', {}).get('epic')
-                if epic:
-                    st.session_state.capital_api.close_position_by_epic(epic)
+                deal_id = p.get('position', {}).get('dealId')
+                if deal_id:
+                    if hasattr(st.session_state.capital_api, 'close_position_by_deal_id'):
+                        st.session_state.capital_api.close_position_by_deal_id(deal_id)
+                    else:
+                        epic = p.get('market', {}).get('epic')
+                        st.session_state.capital_api.close_position_by_epic(epic)
                     chiuse += 1
                     
             # Puliamo la memoria locale
