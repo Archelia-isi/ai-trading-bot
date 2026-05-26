@@ -19,8 +19,8 @@ class GeminiSentimentAnalyzer:
         else:
             try:
                 genai.configure(api_key=self.api_key)
-                # Utilizziamo gemini-pro (modello stabile garantito su tutte le API key)
-                self.model = genai.GenerativeModel('gemini-pro')
+                # Utilizziamo gemini-3.1-pro per massima accuratezza analitica
+                self.model = genai.GenerativeModel('gemini-3.1-pro')
                 logger.info("Modulo Gemini inizializzato correttamente.")
             except Exception as e:
                 logger.error(f"Errore inizializzazione Gemini: {e}")
