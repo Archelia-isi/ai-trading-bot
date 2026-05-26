@@ -32,17 +32,18 @@ def main():
         api.authenticate()
         st.session_state.capital_api = api
 
-    # Inizializza i motori
-    if 'gemini' not in st.session_state:
-        st.session_state.gemini = GeminiSentimentAnalyzer()
+    # Inizializza o Ricarica i motori (per evitare problemi di hot-reload di Streamlit)
+    st.session_state.gemini = GeminiSentimentAnalyzer()
+    
     if 'db' not in st.session_state:
         st.session_state.db = DatabaseManager()
-    if 'quant' not in st.session_state:
-        st.session_state.quant = QuantEngine(st.session_state.capital_api, st.session_state.db)
+        
+    st.session_state.quant = QuantEngine(st.session_state.capital_api, st.session_state.db)
+    
     if 'notifier' not in st.session_state:
         st.session_state.notifier = TelegramNotifier()
-    if 'discovery' not in st.session_state:
-        st.session_state.discovery = MarketDiscovery()
+        
+    st.session_state.discovery = MarketDiscovery()
     
     # Memoria HFT
     if 'open_positions' not in st.session_state:
