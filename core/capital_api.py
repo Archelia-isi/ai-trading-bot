@@ -148,9 +148,11 @@ class CapitalComAPI:
                 logger.warning(f"Size calcolata ({size}) inferiore al minimo del broker ({min_size}). Arrotondo al minimo se l'AI ha conviction!")
                 size = min_size
                 
+            api_dir = "BUY" if direction.upper() == "LONG" else "SELL"
+            
             payload = {
                 "epic": epic,
-                "direction": direction.upper(), # BUY o SELL
+                "direction": api_dir,
                 "size": round(size, 4),
                 "guaranteedStop": False
             }
