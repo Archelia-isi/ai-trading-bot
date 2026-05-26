@@ -78,6 +78,7 @@ def main():
                     sl_price = pos['current_high'] * (1 - pos['sl_distance'])
                     if current_price <= sl_price:
                         st.warning(f"📉 TRAILING STOP COLPITO su {clean_name}! Vendita a €{current_price} (Max: €{pos['current_high']})")
+                        st.session_state.capital_api.close_position_by_epic(epic)
                         to_remove.append(epic)
                         st.session_state.cooldowns[clean_name] = current_time + (2 * 3600) # 2 ore
                         
@@ -88,6 +89,7 @@ def main():
                     sl_price = pos['current_low'] * (1 + pos['sl_distance'])
                     if current_price >= sl_price:
                         st.warning(f"📈 TRAILING STOP COLPITO su {clean_name}! Ricopertura a €{current_price} (Min: €{pos['current_low']})")
+                        st.session_state.capital_api.close_position_by_epic(epic)
                         to_remove.append(epic)
                         st.session_state.cooldowns[clean_name] = current_time + (2 * 3600)
             
@@ -145,7 +147,16 @@ def main():
                 )
                 
                 if trade and trade['action']:
-                    st.success(f"Operazione Eseguita! {trade['action']} su {trade['asset']}")
+                    st.success(f"Segnale Calcolato: {trade['action']} su {trade['asset']}. Invio a Capital.com...")
+                    
+                    # 4. Esecuzione REALE sul broker
+                    order_res = st.session_state.capital_api.place_order(epic, trade['action'], trade['size_qty'])
+                    
+                    if order_res['status'] == 'error':
+                        st.error(f"❌ Ordine Rifiutato dal broker: {order_res.get('message')}")
+                        continue
+                        
+                    st.success("✅ Ordine Eseguito con successo sul Broker!")
                     
                     # Salva in memoria per il Trailing Stop
                     st.session_state.open_positions[epic] = {

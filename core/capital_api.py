@@ -121,3 +121,78 @@ class CapitalComAPI:
             return 100.0
         except:
             return 100.0
+
+    def get_min_deal_size(self, epic: str) -> float:
+        """Cerca la size minima consentita per un EPIC per evitare rigetti dal broker."""
+        if not self.is_authenticated:
+            return 0.1
+        try:
+            url = f"{self.base_url}/markets/{epic}"
+            response = requests.get(url, headers=self._get_headers(with_auth=True), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                return float(data.get('dealingRules', {}).get('minDealSize', {}).get('value', 0.1))
+            return 0.1
+        except:
+            return 0.1
+
+    def place_order(self, epic: str, direction: str, size: float) -> dict:
+        """Piazza un ordine di mercato reale su Capital.com."""
+        if not self.is_authenticated:
+            logger.info(f"[MOCK] Ordine piazzato: {direction} {epic} size {size}")
+            return {"status": "success", "dealId": "mock_deal_id"}
+            
+        try:
+            min_size = self.get_min_deal_size(epic)
+            if size < min_size:
+                logger.warning(f"Size calcolata ({size}) inferiore al minimo del broker ({min_size}). Arrotondo al minimo se l'AI ha conviction!")
+                size = min_size
+                
+            payload = {
+                "epic": epic,
+                "direction": direction.upper(), # BUY o SELL
+                "size": round(size, 4),
+                "guaranteedStop": False
+            }
+            response = requests.post(f"{self.base_url}/positions", json=payload, headers=self._get_headers(with_auth=True), timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"✅ Ordine Capital.com Accettato! {direction} {epic}")
+                return {"status": "success", "dealReference": data.get('dealReference')}
+            else:
+                logger.error(f"❌ Ordine Capital.com Rifiutato: {response.text}")
+                return {"status": "error", "message": response.text}
+        except Exception as e:
+            logger.error(f"Errore piazzamento ordine: {e}")
+            return {"status": "error", "message": str(e)}
+
+    def close_position_by_epic(self, epic: str):
+        """Chiude tutte le posizioni aperte per un dato epic (utile per Trailing Stop)."""
+        if not self.is_authenticated:
+            logger.info(f"[MOCK] Posizione chiusa per {epic}")
+            return True
+            
+        try:
+            # 1. Recupero tutte le posizioni aperte per trovare i dealId associati a questo EPIC
+            response = requests.get(f"{self.base_url}/positions", headers=self._get_headers(with_auth=True), timeout=10)
+            if response.status_code == 200:
+                positions = response.json().get('positions', [])
+                closed_any = False
+                for p in positions:
+                    market = p.get('market', {})
+                    if market.get('epic') == epic:
+                        deal_id = p.get('position', {}).get('dealId')
+                        if deal_id:
+                            # 2. Chiudo il deal specifico
+                            del_resp = requests.delete(f"{self.base_url}/positions/{deal_id}", headers=self._get_headers(with_auth=True), timeout=10)
+                            if del_resp.status_code == 200:
+                                logger.info(f"✅ Posizione chiusa con successo per {epic} (DealID: {deal_id})")
+                                closed_any = True
+                            else:
+                                logger.error(f"❌ Errore chiusura posizione {deal_id}: {del_resp.text}")
+                return closed_any
+            return False
+        except Exception as e:
+            logger.error(f"Errore durante la chiusura posizioni per {epic}: {e}")
+            return False

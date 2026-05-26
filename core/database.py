@@ -85,3 +85,21 @@ class DatabaseManager:
             return []
         finally:
             conn.close()
+
+    def truncate_logs(self):
+        """Svuota completamente la tabella trade_logs (utile per pulizia test)."""
+        conn = self._get_connection()
+        if not conn:
+            return False
+            
+        try:
+            with conn.cursor() as cur:
+                cur.execute("TRUNCATE TABLE trade_logs RESTART IDENTITY;")
+            conn.commit()
+            logger.info("Tabella trade_logs svuotata con successo.")
+            return True
+        except Exception as e:
+            logger.error(f"Errore durante lo svuotamento del DB: {e}")
+            return False
+        finally:
+            conn.close()

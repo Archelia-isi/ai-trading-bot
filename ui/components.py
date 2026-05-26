@@ -41,6 +41,14 @@ def render_sidebar():
         else:
             st.warning("🔴 Bot Fermo")
             
+        st.divider()
+        st.subheader("Database")
+        if st.button("🗑️ Svuota Database", help="Cancella tutti i log dei trade simulati o vecchi.", use_container_width=True):
+            if 'db' in st.session_state:
+                st.session_state.db.truncate_logs()
+                st.toast("Database svuotato con successo!", icon="✅")
+                st.rerun()
+            
         return profilo
 
 def render_metrics(api):
