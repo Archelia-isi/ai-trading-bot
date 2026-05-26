@@ -41,6 +41,27 @@ class XGBoostEngine:
         
         return df.dropna()
 
+    def get_yahoo_ticker(self, asset_name: str) -> str:
+        """Cerca il ticker Yahoo Finance corretto a partire dal nome dell'azienda."""
+        try:
+            import requests
+            url = f"https://query2.finance.yahoo.com/v1/finance/search"
+            params = {"q": asset_name, "quotesCount": 1, "newsCount": 0}
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            
+            # Eccezione per criptovalute più comuni
+            if "bitcoin" in asset_name.lower() or "btc" in asset_name.lower(): return "BTC-USD"
+            if "ethereum" in asset_name.lower() or "eth" in asset_name.lower(): return "ETH-USD"
+            
+            res = requests.get(url, params=params, headers=headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                if "quotes" in data and len(data["quotes"]) > 0:
+                    return data["quotes"][0]["symbol"]
+        except Exception as e:
+            logger.error(f"Errore ricerca ticker Yahoo per {asset_name}: {e}")
+        return asset_name
+
     def calculate_probability(self, asset_name: str) -> float:
         """
         Scarica 1 anno di storico tramite yfinance, addestra XGBoost e restituisce
@@ -48,9 +69,10 @@ class XGBoostEngine:
         """
         try:
             # Ricerca rapida del ticker Yahoo Finance
-            # Spesso i nomi degli asset devono essere mappati. Usiamo un try/except su yfinance.
-            # Cerchiamo di usare l'asset_name come parola chiave o proviamo direttamente il ticker se noto
-            ticker_obj = yf.Ticker(asset_name)
+            ticker_symbol = self.get_yahoo_ticker(asset_name)
+            logger.info(f"XGBoost: Trovato Ticker Yahoo '{ticker_symbol}' per l'asset '{asset_name}'")
+            
+            ticker_obj = yf.Ticker(ticker_symbol)
             
             # Scarichiamo 1 anno di dati giornalieri
             df = ticker_obj.history(period="1y")
