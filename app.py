@@ -161,7 +161,7 @@ def main():
                         asset=trade['asset'], 
                         profile=profilo_selezionato, 
                         action=trade['action'], 
-                        price=trade['price']
+                        price=trade['entry_price']
                     )
             
         # Pausa lunga per evitare rate limit e dare tempo al mercato
