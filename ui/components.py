@@ -169,9 +169,26 @@ def render_kill_switch():
     st.markdown("### ⚠️ Procedure di Emergenza")
     if st.button("🚨 KILL SWITCH MANUALE (Chiudi tutte le posizioni)", type="primary"):
         st.error("KILL SWITCH ATTIVATO! Invio segnale di chiusura massiva e arresto bot...", icon="🚨")
-        # Logica di chiusura
+        # Logica di chiusura REALE
         st.session_state.bot_running = False
-        st.toast("Tutte le posizioni chiuse (Simulazione)", icon="✅")
+        
+        if 'capital_api' in st.session_state and st.session_state.capital_api.is_authenticated:
+            st.info("Chiusura di emergenza in corso sul broker...")
+            pos_aperte = st.session_state.capital_api.get_all_positions()
+            chiuse = 0
+            for p in pos_aperte:
+                epic = p.get('market', {}).get('epic')
+                if epic:
+                    st.session_state.capital_api.close_position_by_epic(epic)
+                    chiuse += 1
+                    
+            # Puliamo la memoria locale
+            if 'open_positions' in st.session_state:
+                st.session_state.open_positions.clear()
+                
+            st.toast(f"Kill Switch Completato! {chiuse} posizioni chiuse forzatamente.", icon="✅")
+        else:
+            st.toast("Tutte le posizioni chiuse (Offline/Simulazione)", icon="✅")
         
         # Invio Allarme su Telegram
         notifier = TelegramNotifier()
