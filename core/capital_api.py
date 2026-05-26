@@ -75,3 +75,49 @@ class CapitalComAPI:
         except Exception as e:
             logger.error(f"Errore nel recupero saldo Capital.com: {e}")
             return 0.0
+
+    def search_instrument(self, search_term: str):
+        """Cerca un EPIC (simbolo) su Capital.com partendo da un nome comune."""
+        if not self.is_authenticated:
+            return None
+            
+        try:
+            url = f"{self.base_url}/markets?searchTerm={search_term}"
+            response = requests.get(url, headers=self._get_headers(with_auth=True), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                markets = data.get('markets', [])
+                if markets:
+                    # Ritorna il primo risultato utile
+                    for m in markets:
+                        if m.get('marketState') == 'TRADEABLE':
+                            return {
+                                "epic": m.get('epic'),
+                                "name": m.get('instrumentName')
+                            }
+                    return {
+                        "epic": markets[0].get('epic'),
+                        "name": markets[0].get('instrumentName')
+                    }
+            return None
+        except Exception as e:
+            logger.error(f"Errore ricerca strumento su Capital.com: {e}")
+            return None
+            
+    def get_market_price(self, epic: str) -> float:
+        """Ottiene il prezzo attuale di un EPIC specifico."""
+        if not self.is_authenticated:
+            return round(float(len(epic) * 10), 2) # Prezzo finto per test UI
+        try:
+            url = f"{self.base_url}/markets/{epic}"
+            response = requests.get(url, headers=self._get_headers(with_auth=True), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                snapshot = data.get('snapshot', {})
+                bid = snapshot.get('bid')
+                offer = snapshot.get('offer')
+                if bid and offer:
+                    return round((bid + offer) / 2, 4)
+            return 100.0
+        except:
+            return 100.0

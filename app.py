@@ -5,10 +5,12 @@ from ui.components import render_sidebar, render_metrics, render_fake_chart, ren
 import time
 import random
 from core.capital_api import CapitalComAPI
+from core.capital_api import CapitalComAPI
 from core.gemini_sentiment import GeminiSentimentAnalyzer
 from core.quant_engine import QuantEngine
 from core.database import DatabaseManager
 from core.notifier import TelegramNotifier
+from core.market_discovery import MarketDiscovery
 
 # Configurazione base della pagina Streamlit
 st.set_page_config(
@@ -40,6 +42,8 @@ def main():
         st.session_state.quant = QuantEngine(st.session_state.capital_api, st.session_state.db)
     if 'notifier' not in st.session_state:
         st.session_state.notifier = TelegramNotifier()
+    if 'discovery' not in st.session_state:
+        st.session_state.discovery = MarketDiscovery()
 
     # Renderizzazione Sidebar (Profilo di rischio e Start/Stop)
     profilo_selezionato = render_sidebar()
@@ -51,47 +55,50 @@ def main():
     # Ciclo Esecutivo (quando si preme AVVIA)
     if st.session_state.bot_running:
         st.markdown("### 🔄 Esecuzione Motore in corso...")
-        with st.spinner("Analisi Gemini e Quant Engine in funzione..."):
+        with st.spinner("🌍 Ricerca Web degli Asset Caldi tramite Google Search Grounding..."):
             
-            # Universo di Asset (Crypto, Forex, Azioni, Materie Prime)
-            ASSETS_UNIVERSE = [
-                "Bitcoin (BTC)", "Ethereum (ETH)", "Solana (SOL)", "Ripple (XRP)", "Cardano (ADA)",
-                "Apple (AAPL)", "Tesla (TSLA)", "NVIDIA (NVDA)", "Microsoft (MSFT)", "Amazon (AMZN)",
-                "EUR/USD", "GBP/USD", "USD/JPY",
-                "Oro (GOLD)", "Petrolio (WTI)", "Argento (SILVER)",
-                "S&P 500", "NASDAQ 100", "Dow Jones"
-            ]
-            asset_target = random.choice(ASSETS_UNIVERSE)
+            # 1. Discovery
+            trending_assets_names = st.session_state.discovery.get_trending_assets(max_assets=3)
+            st.write(f"**Asset individuati dalle news:** {', '.join(trending_assets_names)}")
             
-            # Prezzo fittizio (verrebbe preso dalle API WebSocket in un ambiente reale)
-            prezzo_attuale = round(random.uniform(100.0, 70000.0), 2)
-            
-            # 1. Chiamata a Gemini per il Sentiment
-            sentiment = st.session_state.gemini.analyze_market_sentiment(asset_target)
-            score = sentiment.get("score", 50)
-            
-            st.info(f"**Ultimo Sentiment:** {score} / 100 - {sentiment.get('motivazione', '')}")
-            
-            # 2. Decisione del Quant Engine
-            trade = st.session_state.quant.evaluate_and_trade(
-                asset=asset_target, 
-                sentiment_score=score, 
-                profile_name=profilo_selezionato,
-                current_price=prezzo_attuale
-            )
-            
-            # 3. Azione e Notifica
-            if trade:
-                st.success(f"Operazione Eseguita! {trade['action']} su {trade['asset']}")
-                st.session_state.notifier.send_trade_alert(
-                    asset=trade['asset'], 
-                    profile=profilo_selezionato, 
-                    action=trade['action'], 
-                    price=trade['price']
+            # 2. Iterazione sugli asset scoperti
+            for raw_asset_name in trending_assets_names:
+                st.markdown(f"#### Analisi: {raw_asset_name}")
+                
+                # Cerca lo strumento su Capital.com
+                instrument = st.session_state.capital_api.search_instrument(raw_asset_name)
+                if not instrument:
+                    st.warning(f"L'asset '{raw_asset_name}' non è stato trovato su Capital.com. Saltato.")
+                    continue
+                
+                epic = instrument['epic']
+                clean_name = instrument['name']
+                prezzo_attuale = st.session_state.capital_api.get_market_price(epic)
+                st.write(f"↳ Match su Capital.com: **{clean_name}** ({epic}) a €{prezzo_attuale}")
+                
+                # 3. Sentiment & Quant
+                sentiment = st.session_state.gemini.analyze_market_sentiment(clean_name)
+                score = sentiment.get("score", 50)
+                st.info(f"Sentiment {clean_name}: {score}/100 - {sentiment.get('motivazione', '')}")
+                
+                trade = st.session_state.quant.evaluate_and_trade(
+                    asset=clean_name, 
+                    sentiment_score=score, 
+                    profile_name=profilo_selezionato,
+                    current_price=prezzo_attuale
                 )
+                
+                if trade:
+                    st.success(f"Operazione Eseguita! {trade['action']} su {trade['asset']}")
+                    st.session_state.notifier.send_trade_alert(
+                        asset=trade['asset'], 
+                        profile=profilo_selezionato, 
+                        action=trade['action'], 
+                        price=trade['price']
+                    )
             
-        # Riavvia il loop ogni 10 secondi per aggiornare dati e grafici
-        time.sleep(10)
+        # Pausa lunga per evitare rate limit e dare tempo al mercato
+        time.sleep(180)
         st.rerun()
 
     # Grafico PnL
