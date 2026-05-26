@@ -63,12 +63,18 @@ def render_fake_chart():
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=300)
     st.plotly_chart(fig, use_container_width=True)
 
+from core.notifier import TelegramNotifier
+
 def render_kill_switch():
     """Renderizza il bottone di emergenza per chiudere tutto"""
     st.divider()
     st.markdown("### ⚠️ Procedure di Emergenza")
     if st.button("🚨 KILL SWITCH MANUALE (Chiudi tutte le posizioni)", type="primary"):
         st.error("KILL SWITCH ATTIVATO! Invio segnale di chiusura massiva e arresto bot...", icon="🚨")
-        # Qui andremo ad implementare la logica di chiusura
+        # Logica di chiusura
         st.session_state.bot_running = False
         st.toast("Tutte le posizioni chiuse (Simulazione)", icon="✅")
+        
+        # Invio Allarme su Telegram
+        notifier = TelegramNotifier()
+        notifier.send_kill_switch_alert()
