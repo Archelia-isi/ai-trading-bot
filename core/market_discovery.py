@@ -43,7 +43,7 @@ class MarketDiscovery:
             }
             headers = {"Content-Type": "application/json"}
             
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response = requests.post(url, json=payload, headers=headers, timeout=120)
             
             if response.status_code == 200:
                 data = response.json()
