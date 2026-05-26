@@ -34,7 +34,8 @@ class CapitalComAPI:
             logger.info("Tentativo di connessione a Capital.com (Demo)...")
             payload = {
                 "identifier": self.email,
-                "password": self.api_secret
+                "password": self.api_secret,
+                "encryptedPassword": False
             }
             response = requests.post(f"{self.base_url}/session", json=payload, headers=self._get_headers(), timeout=10)
             
