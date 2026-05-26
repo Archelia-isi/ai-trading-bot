@@ -68,6 +68,11 @@ def render_metrics(api):
 
 def render_portfolio(api):
     """Renderizza la tabella del portafoglio live con conversione in Euro."""
+    col1, col2 = st.columns([8, 2])
+    with col2:
+        if st.button("🔄 Aggiorna Dati", use_container_width=True):
+            st.rerun()
+            
     positions = api.get_all_positions()
     
     if not positions:

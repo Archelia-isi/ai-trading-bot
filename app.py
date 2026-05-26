@@ -47,6 +47,28 @@ def main():
     # Memoria HFT
     if 'open_positions' not in st.session_state:
         st.session_state.open_positions = {}
+        # Sincronizzazione con il broker post-riavvio
+        if st.session_state.capital_api.is_authenticated:
+            try:
+                real_positions = st.session_state.capital_api.get_all_positions()
+                for p in real_positions:
+                    epic = p.get('market', {}).get('epic')
+                    clean_name = p.get('market', {}).get('instrumentName')
+                    direction = p.get('position', {}).get('direction')
+                    entry_price = p.get('position', {}).get('level')
+                    
+                    if epic and clean_name:
+                        # Resetta il picco al prezzo d'ingresso. Il Trailing lo aggiornerà subito
+                        st.session_state.open_positions[epic] = {
+                            "name": clean_name,
+                            "action": direction,
+                            "entry_price": entry_price,
+                            "current_high": entry_price,
+                            "current_low": entry_price,
+                            "sl_distance": 0.05
+                        }
+            except Exception:
+                pass
     if 'cooldowns' not in st.session_state:
         st.session_state.cooldowns = {}
 
