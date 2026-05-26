@@ -35,19 +35,17 @@ class GeminiSentimentAnalyzer:
             return {"score": 50, "motivazione": "API Key mancante, restituito valore neutrale simulato (50)."}
 
         prompt = f"""
-        Sei un esperto analista finanziario quantitativo.
-        Il tuo compito è analizzare il sentiment di mercato per l'asset: {asset_name}.
-        Contesto di mercato/Notizie: {news_context if news_context else "Nessuna notizia rilevante fornita. Basati sullo storico recente noto."}
+        Sei un analista quantitativo di un Hedge Fund speculativo ad alta frequenza (Day Trading).
+        Analizza il sentiment e il potenziale speculativo odierno per l'asset: {asset_name}
+        Considera le ultimissime notizie globali, i social media e l'hype del mercato.
         
-        REGOLE FONDAMENTALI:
-        1. Valuta il sentiment da 1 a 100 (dove 1 è panico/short forte e 100 è euforia/long forte).
-        2. Rispondi SEMPRE E SOLO IN LINGUA ITALIANA.
-        3. Restituisci ESCLUSIVAMENTE un oggetto JSON valido con questa struttura esatta:
+        Devi restituire ESCLUSIVAMENTE un JSON valido con questa esatta struttura:
         {{
-            "score": <numero da 1 a 100>,
-            "motivazione": "<breve motivazione tecnica in italiano (max 20 parole)>"
+            "score": <intero da 0 a 100, dove 0 è panic selling estremo, 50 è neutro, 100 è buy speculativo assoluto>,
+            "conviction": <intero da 1 a 10, dove 10 significa che la notizia è esplosiva e l'aumento/crollo è quasi certo oggi>,
+            "asset_risk": "<stringa 'HIGH' o 'LOW'. Usa 'HIGH' per crypto, meme stocks, small cap. Usa 'LOW' per indici, megacap tech, oro>",
+            "motivazione": "<stringa breve che giustifica l'analisi speculativa per il day trading>"
         }}
-        Niente markdown intorno al JSON, solo il testo JSON crudo.
         """
         
         try:

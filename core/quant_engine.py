@@ -4,12 +4,12 @@ from core.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
-# Definizione dei profili dal file di specifiche del progetto
+# Definizione dei profili: ogni profilo ha soglie di segnale e moltiplicatori in base al rischio dell'asset
 RISK_PROFILES = {
-    "Il Pirata 🏴‍☠️": {"long_thresh": 65, "short_thresh": 35, "risk_pct": 0.05, "drawdown_max": 0.10},
-    "Il Velocista ⚡": {"long_thresh": 70, "short_thresh": 30, "risk_pct": 0.03, "drawdown_max": 0.05},
-    "Il Moderato 🛡️": {"long_thresh": 80, "short_thresh": 20, "risk_pct": 0.015, "drawdown_max": 0.03},
-    "La Fortezza 🏰": {"long_thresh": 90, "short_thresh": 10, "risk_pct": 0.01, "drawdown_max": 0.015}
+    "La Fortezza 🏰": {"long_thresh": 85, "short_thresh": 15, "multi_low": 1.0, "multi_high": 0.2},
+    "Il Moderato 🛡️": {"long_thresh": 75, "short_thresh": 25, "multi_low": 1.5, "multi_high": 0.5},
+    "Il Velocista ⚡": {"long_thresh": 65, "short_thresh": 35, "multi_low": 1.0, "multi_high": 1.5},
+    "Il Pirata 🏴‍☠️": {"long_thresh": 55, "short_thresh": 45, "multi_low": 0.5, "multi_high": 3.0}
 }
 
 class QuantEngine:
@@ -17,37 +17,54 @@ class QuantEngine:
         self.api = api
         self.db = db
 
-    def evaluate_and_trade(self, asset: str, sentiment_score: int, profile_name: str, current_price: float):
+    def evaluate_and_trade(self, asset: str, sentiment_data: dict, profile_name: str, current_price: float):
         """
-        Motore Quantitativo: incrocia lo score di sentiment di Gemini 
-        con le soglie psicologiche del profilo di rischio scelto.
+        Motore Quantitativo: incrocia i dati dinamici di Gemini (score, conviction, asset_risk)
+        con le regole di speculazione del profilo.
         """
         profile = RISK_PROFILES.get(profile_name)
         if not profile:
             logger.error(f"Profilo di rischio sconosciuto: {profile_name}")
             return None
 
-        # Otteniamo il saldo reale/demo dal conto
-        balance = self.api.get_account_balance()
-        if balance <= 0:
-            logger.warning("Saldo insufficiente. Impossibile procedere con il trade.")
-            return None
-
-        # Gestione Monetaria (Money Management): calcolo dimensione posizione
-        size_eur = balance * profile["risk_pct"]
-        size_qty = size_eur / current_price if current_price > 0 else 0
-
+        sentiment_score = sentiment_data.get("score", 50)
+        conviction = sentiment_data.get("conviction", 1)
+        asset_risk = sentiment_data.get("asset_risk", "LOW").upper()
+        
+        # Logica di Trading (Segnale)
         action = None
-        # Logica di Trading basata sulle soglie specificate per questo profilo
         if sentiment_score >= profile["long_thresh"]:
             action = "LONG"
-            logger.info(f"🔥 SEGNALE FORTE LONG generato per {asset} (Score Gemini: {sentiment_score})")
         elif sentiment_score <= profile["short_thresh"]:
             action = "SHORT"
-            logger.info(f"🩸 SEGNALE FORTE SHORT generato per {asset} (Score Gemini: {sentiment_score})")
         else:
-            logger.info(f"⚖️ Nessun segnale per {asset} (Score {sentiment_score} è neutro per il profilo '{profile_name}')")
+            logger.info(f"⚖️ Nessun segnale forte per {asset} (Score: {sentiment_score})")
             return None
+
+        # Sizing Dinamico: Base = 0.5% * Conviction (da 1 a 10) -> max 5% base
+        base_pct = (conviction * 0.5) / 100.0
+        
+        # Moltiplicatore di Profilo in base al Rischio Intrinseco
+        multiplier = profile["multi_high"] if asset_risk == "HIGH" else profile["multi_low"]
+        final_risk_pct = base_pct * multiplier
+        
+        # Cap di sicurezza per non investire tutto in una singola botta assurda (max 20% per trade)
+        final_risk_pct = min(final_risk_pct, 0.20)
+
+        balance = self.api.get_account_balance()
+        if balance <= 0:
+            logger.warning("Saldo insufficiente.")
+            return None
+
+        size_eur = balance * final_risk_pct
+        size_qty = size_eur / current_price if current_price > 0 else 0
+        
+        # Logiche Scalping / Day Trading (Puntiamo a capitalizzare l'1% giornaliero veloce)
+        # Take profit stretto (+2%), Stop Loss stretto (-1%)
+        take_profit = current_price * 1.02 if action == "LONG" else current_price * 0.98
+        stop_loss = current_price * 0.99 if action == "LONG" else current_price * 1.01
+
+        logger.info(f"🔥 SEGNALE {action} su {asset} | Conviction: {conviction}/10 | Rischio Asset: {asset_risk} | Allocazione: {final_risk_pct*100:.2f}% (€{size_eur:.2f})")
 
         # Simulazione ordine e log persistente nel Database
         self.db.log_trade(
@@ -64,5 +81,7 @@ class QuantEngine:
             "asset": asset,
             "size_eur": size_eur,
             "size_qty": size_qty,
-            "price": current_price
+            "price": current_price,
+            "take_profit": take_profit,
+            "stop_loss": stop_loss
         }

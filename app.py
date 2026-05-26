@@ -78,12 +78,17 @@ def main():
                 
                 # 3. Sentiment & Quant
                 sentiment = st.session_state.gemini.analyze_market_sentiment(clean_name)
+                
                 score = sentiment.get("score", 50)
-                st.info(f"Sentiment {clean_name}: {score}/100 - {sentiment.get('motivazione', '')}")
+                conviction = sentiment.get("conviction", 1)
+                asset_risk = sentiment.get("asset_risk", "LOW")
+                motivazione = sentiment.get("motivazione", "")
+                
+                st.info(f"Sentiment {clean_name}: Score {score}/100 | Conviction: {conviction}/10 | Rischio Asset: {asset_risk} \n\nMotivo: {motivazione}")
                 
                 trade = st.session_state.quant.evaluate_and_trade(
                     asset=clean_name, 
-                    sentiment_score=score, 
+                    sentiment_data=sentiment, 
                     profile_name=profilo_selezionato,
                     current_price=prezzo_attuale
                 )
