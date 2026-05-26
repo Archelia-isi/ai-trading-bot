@@ -68,8 +68,25 @@ def main():
             to_remove = []
             
             for epic, pos in st.session_state.open_positions.items():
-                current_price = st.session_state.capital_api.get_market_price(epic)
                 clean_name = pos['name']
+                
+                # --- NOVITÀ: Chiusura Dinamica Pre-Mercato ---
+                closing_soon = False
+                try:
+                    closing_soon = st.session_state.capital_api.is_market_closing_soon(epic, threshold_minutes=15)
+                except:
+                    pass
+                
+                if closing_soon:
+                    st.warning(f"⏰ Chiusura Borsa imminente per {clean_name}! Vendita forzata a mercato per evitare l'overnight.")
+                    st.session_state.capital_api.close_position_by_epic(epic)
+                    to_remove.append(epic)
+                    # Quarantena lunga (es. 12 ore) per evitare che Fase 2 lo ricompri subito negli ultimi minuti
+                    st.session_state.cooldowns[clean_name] = current_time + (12 * 3600)
+                    continue
+                # -----------------------------------------------
+
+                current_price = st.session_state.capital_api.get_market_price(epic)
                 
                 if pos['action'] == 'LONG':
                     if current_price > pos['current_high']:

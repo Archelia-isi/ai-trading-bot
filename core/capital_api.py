@@ -15,6 +15,7 @@ class CapitalComAPI:
         self.cst_token = None
         self.x_security_token = None
         self.is_authenticated = False
+        self.market_hours_cache = {}
 
     def _get_headers(self, with_auth=False):
         headers = {'Content-Type': 'application/json', 'X-CAP-API-KEY': str(self.api_key)}
@@ -198,3 +199,61 @@ class CapitalComAPI:
         except Exception as e:
             logger.error(f"Errore durante la chiusura posizioni per {epic}: {e}")
             return False
+
+    def get_market_hours(self, epic: str) -> dict:
+        """Scarica e salva in cache gli orari di apertura per un epic."""
+        if not self.is_authenticated:
+            return {}
+            
+        if epic in self.market_hours_cache:
+            return self.market_hours_cache[epic]
+            
+        try:
+            url = f"{self.base_url}/markets/{epic}"
+            response = requests.get(url, headers=self._get_headers(with_auth=True), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                hours = data.get('instrument', {}).get('openingHours', {})
+                self.market_hours_cache[epic] = hours
+                return hours
+            return {}
+        except Exception as e:
+            logger.error(f"Errore recupero market hours per {epic}: {e}")
+            return {}
+
+    def is_market_closing_soon(self, epic: str, threshold_minutes: int = 15) -> bool:
+        """Verifica se il mercato per l'epic specificato sta chiudendo entro i prossimi X minuti."""
+        hours = self.get_market_hours(epic)
+        if not hours:
+            return False
+            
+        from datetime import datetime
+        import pytz
+        
+        now_utc = datetime.now(pytz.utc)
+        day_str = now_utc.strftime('%a').lower() # mon, tue, wed...
+        
+        hours_today = hours.get(day_str, [])
+        if not hours_today:
+            return False
+            
+        for period in hours_today:
+            try:
+                # Esempio: "08:00 - 21:00" o "08:00 - 00:00"
+                start_str, end_str = period.split(" - ")
+                
+                end_time = datetime.strptime(end_str, "%H:%M").time()
+                if end_str == "00:00":
+                    end_time = datetime.strptime("23:59", "%H:%M").time()
+                    
+                end_dt = datetime.combine(now_utc.date(), end_time).replace(tzinfo=pytz.utc)
+                
+                time_to_close = (end_dt - now_utc).total_seconds() / 60.0
+                
+                # Se mancano tra 0 e threshold_minutes
+                if 0 < time_to_close <= threshold_minutes:
+                    return True
+            except Exception as e:
+                continue
+                
+        return False
