@@ -55,10 +55,95 @@ def render_metrics(api):
     """Renderizza i KPI del portafoglio"""
     saldo = api.get_account_balance()
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Saldo (Paper Trading)", f"€ {saldo:,.2f}", "")
-    col2.metric("Posizioni Aperte", "0", "")
-    col3.metric("Drawdown Attuale", "0.00%", "-")
-    col4.metric("Ultimo Sentiment", "In attesa...", "")
+    pos_list = api.get_all_positions()
+    num_positions = len(pos_list)
+    
+    col1.metric("Saldo Capitale (Live)", f"€ {saldo:,.2f}", "")
+    col2.metric("Posizioni Aperte", str(num_positions), "")
+    
+    # Calculate total UPL
+    tot_upl = sum(p.get('position', {}).get('upl', 0.0) for p in pos_list)
+    col3.metric("PnL Fluttuante", f"€ {tot_upl:,.2f}", f"{(tot_upl/saldo*100):.2f}%" if saldo > 0 else "")
+    col4.metric("Ultimo Sentiment", "Attivo", "")
+
+def render_portfolio(api):
+    """Renderizza la tabella del portafoglio live con conversione in Euro."""
+    positions = api.get_all_positions()
+    
+    if not positions:
+        st.info("Nessuna posizione aperta al momento.")
+        return
+        
+    exchange_rates = {}
+    
+    def get_eur_rate(currency):
+        if currency == "EUR":
+            return 1.0
+        if currency in exchange_rates:
+            return exchange_rates[currency]
+            
+        pair_epic = f"EUR{currency}"
+        rate = api.get_market_price(pair_epic)
+        if rate == 100.0 or rate == 0:
+            fallbacks = {"USD": 1.05, "GBP": 0.85, "JPY": 160.0, "CHF": 0.95}
+            rate = fallbacks.get(currency, 1.0)
+            
+        exchange_rates[currency] = rate
+        return rate
+        
+    data = []
+    
+    for p in positions:
+        pos = p.get('position', {})
+        mkt = p.get('market', {})
+        
+        name = mkt.get('instrumentName', 'Unknown')
+        direction = pos.get('direction', 'BUY')
+        size = pos.get('size', 0.0)
+        currency = pos.get('currency', 'EUR')
+        entry_price = pos.get('level', 0.0)
+        
+        current_price = mkt.get('bid', 0.0) if direction == 'BUY' else mkt.get('offer', 0.0)
+        
+        upl_eur = pos.get('upl', 0.0)
+        
+        nominal_local = size * current_price
+        
+        rate = get_eur_rate(currency)
+        nominal_eur = nominal_local / rate if rate else nominal_local
+        investito_eur = (size * entry_price) / rate if rate else (size * entry_price)
+        
+        if investito_eur > 0:
+            pnl_perc = (upl_eur / investito_eur) * 100
+        else:
+            pnl_perc = 0.0
+            
+        data.append({
+            "Titolo": f"{'🟢' if direction=='BUY' else '🔴'} {name}",
+            "Dir": direction,
+            "Size": size,
+            "Acquisto": f"{entry_price:,.4f} {currency}",
+            "Attuale": f"{current_price:,.4f} {currency}",
+            "Investito (€)": investito_eur,
+            "Valore (€)": nominal_eur,
+            "Guadagno/Perdita (€)": upl_eur,
+            "Guadagno/Perdita (%)": pnl_perc
+        })
+        
+    df = pd.DataFrame(data)
+    
+    def color_pnl(val):
+        color = 'green' if val > 0 else 'red' if val < 0 else 'gray'
+        return f'color: {color}'
+        
+    styled_df = df.style.format({
+        "Investito (€)": "€ {:,.2f}",
+        "Valore (€)": "€ {:,.2f}",
+        "Guadagno/Perdita (€)": "€ {:,.2f}",
+        "Guadagno/Perdita (%)": "{:,.2f} %"
+    }).map(color_pnl, subset=["Guadagno/Perdita (€)", "Guadagno/Perdita (%)"])
+    
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 def render_fake_chart():
     """Renderizza un grafico fittizio per il PnL per testare la UI"""

@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from ui.components import render_sidebar, render_metrics, render_fake_chart, render_kill_switch
+from ui.components import render_sidebar, render_metrics, render_portfolio, render_fake_chart, render_kill_switch
 import time
 import random
-from core.capital_api import CapitalComAPI
 from core.capital_api import CapitalComAPI
 from core.gemini_sentiment import GeminiSentimentAnalyzer
 from core.quant_engine import QuantEngine
@@ -55,8 +54,9 @@ def main():
     profilo_selezionato = render_sidebar()
 
     # Sezione Metriche
-    st.markdown("### 📊 Panoramica Portafoglio (Demo)")
+    st.markdown("### 📊 Panoramica Portafoglio (Live)")
     render_metrics(st.session_state.capital_api)
+    render_portfolio(st.session_state.capital_api)
 
     # Ciclo Esecutivo (quando si preme AVVIA)
     if st.session_state.bot_running:

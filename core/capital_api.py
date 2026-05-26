@@ -77,6 +77,20 @@ class CapitalComAPI:
             logger.error(f"Errore nel recupero saldo Capital.com: {e}")
             return 0.0
 
+    def get_all_positions(self) -> list:
+        """Recupera la lista cruda di tutte le posizioni aperte su Capital.com."""
+        if not self.is_authenticated:
+            return []
+        try:
+            response = requests.get(f"{self.base_url}/positions", headers=self._get_headers(with_auth=True), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('positions', [])
+            return []
+        except Exception as e:
+            logger.error(f"Errore nel recupero posizioni: {e}")
+            return []
+
     def search_instrument(self, search_term: str):
         """Cerca un EPIC (simbolo) su Capital.com partendo da un nome comune."""
         if not self.is_authenticated:
