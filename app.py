@@ -44,6 +44,12 @@ def main():
         st.session_state.notifier = TelegramNotifier()
     if 'discovery' not in st.session_state:
         st.session_state.discovery = MarketDiscovery()
+    
+    # Memoria HFT
+    if 'open_positions' not in st.session_state:
+        st.session_state.open_positions = {}
+    if 'cooldowns' not in st.session_state:
+        st.session_state.cooldowns = {}
 
     # Renderizzazione Sidebar (Profilo di rischio e Start/Stop)
     profilo_selezionato = render_sidebar()
@@ -55,7 +61,41 @@ def main():
     # Ciclo Esecutivo (quando si preme AVVIA)
     if st.session_state.bot_running:
         st.markdown("### 🔄 Esecuzione Motore in corso...")
-        with st.spinner("🌍 Ricerca Web degli Asset Caldi tramite Google Search Grounding..."):
+        
+        # --- FASE 1: GESTIONE TRAILING STOP ---
+        with st.spinner("🛡️ Fase 1: Gestione Posizioni Aperte (Trailing Stop)..."):
+            current_time = time.time()
+            to_remove = []
+            
+            for epic, pos in st.session_state.open_positions.items():
+                current_price = st.session_state.capital_api.get_market_price(epic)
+                clean_name = pos['name']
+                
+                if pos['action'] == 'LONG':
+                    if current_price > pos['current_high']:
+                        pos['current_high'] = current_price
+                    
+                    sl_price = pos['current_high'] * (1 - pos['sl_distance'])
+                    if current_price <= sl_price:
+                        st.warning(f"📉 TRAILING STOP COLPITO su {clean_name}! Vendita a €{current_price} (Max: €{pos['current_high']})")
+                        to_remove.append(epic)
+                        st.session_state.cooldowns[clean_name] = current_time + (2 * 3600) # 2 ore
+                        
+                elif pos['action'] == 'SHORT':
+                    if current_price < pos['current_low']:
+                        pos['current_low'] = current_price
+                    
+                    sl_price = pos['current_low'] * (1 + pos['sl_distance'])
+                    if current_price >= sl_price:
+                        st.warning(f"📈 TRAILING STOP COLPITO su {clean_name}! Ricopertura a €{current_price} (Min: €{pos['current_low']})")
+                        to_remove.append(epic)
+                        st.session_state.cooldowns[clean_name] = current_time + (2 * 3600)
+            
+            for epic in to_remove:
+                del st.session_state.open_positions[epic]
+
+        # --- FASE 2: CACCIA AGLI ASSET ---
+        with st.spinner("🌍 Fase 2: Ricerca Web degli Asset Caldi tramite Google Search..."):
             
             # 1. Discovery
             trending_assets_names = st.session_state.discovery.get_trending_assets()
@@ -86,6 +126,17 @@ def main():
                 
                 st.info(f"Sentiment {clean_name}: Score {score}/100 | Conviction: {conviction}/10 | Rischio Asset: {asset_risk} \n\nMotivo: {motivazione}")
                 
+                # Check Cooldown
+                in_cooldown = clean_name in st.session_state.cooldowns and time.time() < st.session_state.cooldowns[clean_name]
+                if in_cooldown and conviction < 9:
+                    st.warning(f"L'asset {clean_name} è in QUARANTENA (cooldown). Conviction ({conviction}) troppo bassa per forzare il blocco.")
+                    continue
+                
+                # Check se già aperto
+                if epic in st.session_state.open_positions:
+                    st.write(f"{clean_name} già in portafoglio. Skippo acquisto.")
+                    continue
+
                 trade = st.session_state.quant.evaluate_and_trade(
                     asset=clean_name, 
                     sentiment_data=sentiment, 
@@ -93,8 +144,19 @@ def main():
                     current_price=prezzo_attuale
                 )
                 
-                if trade:
+                if trade and trade['action']:
                     st.success(f"Operazione Eseguita! {trade['action']} su {trade['asset']}")
+                    
+                    # Salva in memoria per il Trailing Stop
+                    st.session_state.open_positions[epic] = {
+                        "name": clean_name,
+                        "action": trade['action'],
+                        "entry_price": prezzo_attuale,
+                        "current_high": prezzo_attuale,
+                        "current_low": prezzo_attuale,
+                        "sl_distance": trade['sl_distance']
+                    }
+                    
                     st.session_state.notifier.send_trade_alert(
                         asset=trade['asset'], 
                         profile=profilo_selezionato, 

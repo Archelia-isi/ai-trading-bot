@@ -43,6 +43,7 @@ class GeminiSentimentAnalyzer:
         {{
             "score": <intero da 0 a 100, dove 0 è panic selling estremo, 50 è neutro, 100 è buy speculativo assoluto>,
             "conviction": <intero da 1 a 10, dove 10 significa che la notizia è esplosiva e l'aumento/crollo è quasi certo oggi>,
+            "leverage_multiplier": <intero da 1 a 10, che rappresenta la leva finanziaria consigliata. 10x per trade ultra sicuri, 1x se incerto>,
             "asset_risk": "<stringa 'HIGH' o 'LOW'. Usa 'HIGH' per crypto, meme stocks, small cap. Usa 'LOW' per indici, megacap tech, oro>",
             "motivazione": "<stringa breve che giustifica l'analisi speculativa per il day trading>"
         }}

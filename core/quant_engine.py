@@ -31,6 +31,8 @@ class QuantEngine:
         conviction = sentiment_data.get("conviction", 1)
         asset_risk = sentiment_data.get("asset_risk", "LOW").upper()
         
+        leverage = sentiment_data.get("leverage_multiplier", 1)
+        
         # Logica di Trading (Segnale)
         action = None
         if sentiment_score >= profile["long_thresh"]:
@@ -41,30 +43,31 @@ class QuantEngine:
             logger.info(f"⚖️ Nessun segnale forte per {asset} (Score: {sentiment_score})")
             return None
 
-        # Sizing Dinamico: Base = 0.5% * Conviction (da 1 a 10) -> max 5% base
+        # Sizing Dinamico: Base = 0.5% * Conviction (da 1 a 10) -> max 5% base (Margine)
         base_pct = (conviction * 0.5) / 100.0
         
         # Moltiplicatore di Profilo in base al Rischio Intrinseco
         multiplier = profile["multi_high"] if asset_risk == "HIGH" else profile["multi_low"]
-        final_risk_pct = base_pct * multiplier
-        
-        # Cap di sicurezza per non investire tutto in una singola botta assurda (max 20% per trade)
-        final_risk_pct = min(final_risk_pct, 0.20)
+        margin_pct = base_pct * multiplier
+        margin_pct = min(margin_pct, 0.20) # Max 20% margin per trade
 
         balance = self.api.get_account_balance()
         if balance <= 0:
             logger.warning("Saldo insufficiente.")
             return None
 
-        size_eur = balance * final_risk_pct
-        size_qty = size_eur / current_price if current_price > 0 else 0
+        # Margine in EUR bloccato dal conto
+        margin_eur = balance * margin_pct
         
-        # Logiche Scalping / Day Trading (Puntiamo a capitalizzare l'1% giornaliero veloce)
-        # Take profit stretto (+2%), Stop Loss stretto (-1%)
-        take_profit = current_price * 1.02 if action == "LONG" else current_price * 0.98
-        stop_loss = current_price * 0.99 if action == "LONG" else current_price * 1.01
+        # Size reale a mercato usando la leva dell'AI
+        notional_eur = margin_eur * leverage
+        size_qty = notional_eur / current_price if current_price > 0 else 0
+        
+        # Logiche Scalping / Day Trading (Distanza Stop Loss Dinamico)
+        # Non impostiamo un TP per lasciar correre (Trailing Stop gestito da app.py)
+        sl_distance = 0.05 if asset_risk == "HIGH" else 0.02
 
-        logger.info(f"🔥 SEGNALE {action} su {asset} | Conviction: {conviction}/10 | Rischio Asset: {asset_risk} | Allocazione: {final_risk_pct*100:.2f}% (€{size_eur:.2f})")
+        logger.info(f"🔥 SEGNALE {action} {asset} | Conviction: {conviction} | Rischio: {asset_risk} | Leva: {leverage}x | Size: €{notional_eur:.2f} (Margine: €{margin_eur:.2f})")
 
         # Simulazione ordine e log persistente nel Database
         self.db.log_trade(
@@ -79,9 +82,11 @@ class QuantEngine:
         return {
             "action": action,
             "asset": asset,
-            "size_eur": size_eur,
+            "margin_eur": margin_eur,
+            "notional_eur": notional_eur,
+            "leverage": leverage,
             "size_qty": size_qty,
-            "price": current_price,
-            "take_profit": take_profit,
-            "stop_loss": stop_loss
+            "entry_price": current_price,
+            "sl_distance": sl_distance,
+            "conviction": conviction
         }
