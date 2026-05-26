@@ -15,7 +15,7 @@ class MarketDiscovery:
                 # Abilitiamo lo strumento di ricerca Google nativo
                 self.model = genai.GenerativeModel(
                     'gemini-3.1-pro-preview',
-                    tools='google_search'
+                    tools=[{"google_search": {}}]
                 )
                 logger.info("Modulo Market Discovery inizializzato con Google Search Grounding.")
             except Exception as e:
