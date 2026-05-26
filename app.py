@@ -138,81 +138,99 @@ def main():
         # --- FASE 2: CACCIA AGLI ASSET ---
         with st.spinner("🌍 Fase 2: Ricerca Web degli Asset Caldi tramite Google Search..."):
             
-            # 1. Discovery
-            trending_assets_names = st.session_state.discovery.get_trending_assets()
-            st.write(f"**Asset individuati dalle news:** {', '.join(trending_assets_names)}")
+            # --- Controllo Sicurezza 95% Margine ---
+            margin_info = st.session_state.capital_api.get_margin_info()
+            equity = margin_info.get("equity", 1000)
+            available = margin_info.get("available", 1000)
             
-            # 2. Iterazione sugli asset scoperti
-            for raw_asset_name in trending_assets_names:
-                st.markdown(f"#### Analisi: {raw_asset_name}")
+            if available < (equity * 0.05):
+                st.warning(f"⚠️ Limite 95% di Esposizione Raggiunto! (Equity: €{equity}, Free: €{available}). Il bot attende che il Trailing Stop liberi capitale.")
+            else:
+                # 1. Discovery
+                trending_assets_names = st.session_state.discovery.get_trending_assets()
+                st.write(f"**Asset individuati dalle news:** {', '.join(trending_assets_names)}")
                 
-                # Cerca lo strumento su Capital.com
-                instrument = st.session_state.capital_api.search_instrument(raw_asset_name)
-                if not instrument:
-                    st.warning(f"L'asset '{raw_asset_name}' non è stato trovato su Capital.com. Saltato.")
-                    continue
-                
-                epic = instrument['epic']
-                clean_name = instrument['name']
-                prezzo_attuale = st.session_state.capital_api.get_market_price(epic)
-                st.write(f"↳ Match su Capital.com: **{clean_name}** ({epic}) a €{prezzo_attuale}")
-                
-                # 3. Sentiment & Quant
-                sentiment = st.session_state.gemini.analyze_market_sentiment(clean_name)
-                
-                score = sentiment.get("score", 50)
-                conviction = sentiment.get("conviction", 1)
-                asset_risk = sentiment.get("asset_risk", "LOW")
-                motivazione = sentiment.get("motivazione", "")
-                
-                st.info(f"Sentiment {clean_name}: Score {score}/100 | Conviction: {conviction}/10 | Rischio Asset: {asset_risk} \n\nMotivo: {motivazione}")
-                
-                # Check Cooldown
-                in_cooldown = clean_name in st.session_state.cooldowns and time.time() < st.session_state.cooldowns[clean_name]
-                if in_cooldown and conviction < 9:
-                    st.warning(f"L'asset {clean_name} è in QUARANTENA (cooldown). Conviction ({conviction}) troppo bassa per forzare il blocco.")
-                    continue
-                
-                # Check se già aperto
-                if epic in st.session_state.open_positions:
-                    st.write(f"{clean_name} già in portafoglio. Skippo acquisto.")
-                    continue
-
-                trade = st.session_state.quant.evaluate_and_trade(
-                    asset=clean_name, 
-                    sentiment_data=sentiment, 
-                    profile_name=profilo_selezionato,
-                    current_price=prezzo_attuale
-                )
-                
-                if trade and trade['action']:
-                    st.success(f"Segnale Calcolato: {trade['action']} su {trade['asset']}. Invio a Capital.com...")
-                    
-                    # 4. Esecuzione REALE sul broker
-                    order_res = st.session_state.capital_api.place_order(epic, trade['action'], trade['size_qty'])
-                    
-                    if order_res['status'] == 'error':
-                        st.error(f"❌ Ordine Rifiutato dal broker: {order_res.get('message')}")
-                        continue
+                # 2. Iterazione sugli asset scoperti
+                for raw_asset_name in trending_assets_names:
+                    # Ricontrolla il margine prima di ogni acquisto
+                    margin_info = st.session_state.capital_api.get_margin_info()
+                    if margin_info.get("available", 0) < (margin_info.get("equity", 1) * 0.05):
+                        st.warning("Limite Margine 95% raggiunto durante gli acquisti. Pausa.")
+                        break
                         
-                    st.success("✅ Ordine Eseguito con successo sul Broker!")
+                    st.markdown(f"#### Analisi: {raw_asset_name}")
                     
-                    # Salva in memoria per il Trailing Stop
-                    st.session_state.open_positions[epic] = {
-                        "name": clean_name,
-                        "action": trade['action'],
-                        "entry_price": prezzo_attuale,
-                        "current_high": prezzo_attuale,
-                        "current_low": prezzo_attuale,
-                        "sl_distance": trade['sl_distance']
-                    }
+                    # Cerca lo strumento su Capital.com
+                    instrument = st.session_state.capital_api.search_instrument(raw_asset_name)
+                    if not instrument:
+                        st.warning(f"L'asset '{raw_asset_name}' non è stato trovato su Capital.com. Saltato.")
+                        continue
                     
-                    st.session_state.notifier.send_trade_alert(
-                        asset=trade['asset'], 
-                        profile=profilo_selezionato, 
-                        action=trade['action'], 
-                        price=trade['entry_price']
+                    epic = instrument['epic']
+                    clean_name = instrument['name']
+                    prezzo_attuale = st.session_state.capital_api.get_market_price(epic)
+                    st.write(f"↳ Match su Capital.com: **{clean_name}** ({epic}) a €{prezzo_attuale}")
+                    
+                    # Recupera lo storico dei prezzi (24 ore) per l'Analisi Quantitativa
+                    historical_prices = st.session_state.capital_api.get_historical_prices(epic, hours=24)
+                    
+                    # 3. Sentiment & Quant (Incrocio News + Price Action)
+                    sentiment = st.session_state.gemini.analyze_market_sentiment(clean_name, historical_data=historical_prices)
+                    
+                    score = sentiment.get("score", 50)
+                    conviction = sentiment.get("conviction", 1)
+                    asset_risk = sentiment.get("asset_risk", "LOW")
+                    allocation_pct = sentiment.get("allocation_percentage", 5)
+                    motivazione = sentiment.get("motivazione", "")
+                    
+                    st.info(f"Sentiment {clean_name}: Score {score}/100 | Conviction: {conviction}/10 | Rischio Asset: {asset_risk} \n\nMotivo: {motivazione}")
+                    
+                    # Check Cooldown
+                    in_cooldown = clean_name in st.session_state.cooldowns and time.time() < st.session_state.cooldowns[clean_name]
+                    if in_cooldown and conviction < 9:
+                        st.warning(f"L'asset {clean_name} è in QUARANTENA (cooldown). Conviction ({conviction}) troppo bassa per forzare il blocco.")
+                        continue
+                    
+                    # Check se già aperto
+                    if epic in st.session_state.open_positions:
+                        st.write(f"{clean_name} già in portafoglio. Skippo acquisto.")
+                        continue
+
+                    trade = st.session_state.quant.evaluate_and_trade(
+                        asset=clean_name, 
+                        sentiment_data=sentiment, 
+                        profile_name=profilo_selezionato,
+                        current_price=prezzo_attuale
                     )
+                    
+                    if trade and trade['action']:
+                        st.success(f"Segnale Calcolato: {trade['action']} su {trade['asset']}. Invio a Capital.com...")
+                        
+                        # 4. Esecuzione REALE sul broker
+                        order_res = st.session_state.capital_api.place_order(epic, trade['action'], trade['size_qty'])
+                        
+                        if order_res['status'] == 'error':
+                            st.error(f"❌ Ordine Rifiutato dal broker: {order_res.get('message')}")
+                            continue
+                            
+                        st.success("✅ Ordine Eseguito con successo sul Broker!")
+                        
+                        # Salva in memoria per il Trailing Stop
+                        st.session_state.open_positions[epic] = {
+                            "name": clean_name,
+                            "action": trade['action'],
+                            "entry_price": prezzo_attuale,
+                            "current_high": prezzo_attuale,
+                            "current_low": prezzo_attuale,
+                            "sl_distance": trade['sl_distance']
+                        }
+                        
+                        st.session_state.notifier.send_trade_alert(
+                            asset=trade['asset'], 
+                            profile=profilo_selezionato, 
+                            action=trade['action'], 
+                            price=trade['entry_price']
+                        )
             
         # Pausa lunga per evitare rate limit e dare tempo al mercato
         time.sleep(180)
