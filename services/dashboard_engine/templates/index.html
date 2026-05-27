@@ -305,7 +305,14 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
     <script>
+        // Inizializzazione Odometer
+        const odoTotal = new Odometer({ el: document.getElementById('val-total-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
+        const odoAvail = new Odometer({ el: document.getElementById('val-avail-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
+        const odoInvest = new Odometer({ el: document.getElementById('val-invest-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
+        const odoPnl = new Odometer({ el: document.getElementById('val-pnl'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
+
         // Gestione WebSocket
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -347,16 +354,6 @@
             }
         }
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
-    <script>
-        // Inizializzazione Odometer
-        const odoTotal = new Odometer({ el: document.getElementById('val-total-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
-        const odoAvail = new Odometer({ el: document.getElementById('val-avail-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
-        const odoInvest = new Odometer({ el: document.getElementById('val-invest-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
-        const odoPnl = new Odometer({ el: document.getElementById('val-pnl'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
-        
-        // Gestione WebSocket
-        
         function handleMessage(channel, data) {
             const time = new Date().toLocaleTimeString();
             
