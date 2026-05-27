@@ -406,26 +406,34 @@
                 pnlEl.textContent = (data.current_pnl_pct > 0 ? '+' : '') + data.current_pnl_pct.toFixed(2) + '%';
                 pnlEl.className = 'widget-value ' + (data.current_pnl_pct > 0 ? 'pos' : (data.current_pnl_pct < 0 ? 'neg' : ''));
                 
-                // Update Table
+                // Update Table Smoothly
                 const tbody = document.querySelector('#table-positions tbody');
-                tbody.innerHTML = ''; 
                 
                 if (data.open_positions.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: rgba(255,255,255,0.4);">Nessuna posizione aperta</td></tr>';
+                    const emptyMsg = '<tr><td colspan="5" style="text-align: center; color: rgba(255,255,255,0.4);">Nessuna posizione aperta</td></tr>';
+                    if (tbody.innerHTML !== emptyMsg) {
+                        tbody.innerHTML = emptyMsg;
+                    }
                 } else {
+                    let newHtml = '';
                     data.open_positions.forEach(pos => {
-                        const tr = document.createElement('tr');
                         const isBuy = pos.direction === 'BUY';
                         const pnlCls = pos.pnl_pct > 0 ? 'pos-text' : (pos.pnl_pct < 0 ? 'neg-text' : '');
-                        tr.innerHTML = `
-                            <td><strong>${pos.epic}</strong></td>
-                            <td><span class="badge ${isBuy ? 'buy' : 'sell'}">${pos.direction}</span></td>
-                            <td>${pos.size.toFixed(2)}%</td>
-                            <td>${pos.leverage}x</td>
-                            <td class="${pnlCls}"><strong>${pos.pnl_pct > 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%</strong></td>
+                        newHtml += `
+                            <tr>
+                                <td><strong>${pos.epic}</strong></td>
+                                <td><span class="badge ${isBuy ? 'buy' : 'sell'}">${pos.direction}</span></td>
+                                <td>${pos.size.toFixed(2)}%</td>
+                                <td>${pos.leverage}x</td>
+                                <td class="${pnlCls}"><strong>${pos.pnl_pct > 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%</strong></td>
+                            </tr>
                         `;
-                        tbody.appendChild(tr);
                     });
+                    
+                    // Sostituisce solo se c'è un cambiamento reale, evitando il fastidioso sfarfallio
+                    if (tbody.innerHTML !== newHtml) {
+                        tbody.innerHTML = newHtml;
+                    }
                 }
             }
         }

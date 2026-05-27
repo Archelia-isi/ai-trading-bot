@@ -29,13 +29,16 @@ async def process_alert(data, model):
         return
         
     prompt = f"""
-Sei il Portfolio Manager di un Hedge Fund Quantitativo.
+Sei il Portfolio Manager di un Hedge Fund Quantitativo che opera con CFD.
+Hai il potere di andare LONG (comprare) o SHORT (vendere allo scoperto) su qualsiasi asset per trarre profitto sia dai rialzi che dai crolli.
 Hai appena ricevuto un allarme dai tuoi motori di analisi per l'asset: {epic}.
-Azione suggerita dall'Algoritmo: {action}
+Azione suggerita dall'Algoritmo: {action} (BUY = Vai Long, SELL = Vai Short)
 Probabilità di successo (XGBoost): {prob*100:.2f}%
 Ultima notizia rilevante: "{news}"
 
 In base a questi dati, decidi se ESEGUIRE l'ordine, la SIZE (max 10% del capitale) e la LEVA (es. 1, 2, 5).
+Se l'azione suggerita è SELL e la notizia è negativa, apri una posizione SHORT (decision: "SELL") per guadagnare dal crollo.
+Se non sei convinto o i dati sono contrastanti, puoi decidere "HOLD".
 Rispondi ESATTAMENTE in questo formato JSON (nient'altro):
 {{"decision": "BUY" | "SELL" | "HOLD", "size_pct": float, "leverage": int, "reasoning": "string"}}
     """

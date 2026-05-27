@@ -11,6 +11,9 @@ import json
 import os
 import requests
 import numpy as np
+from capital_api import CapitalComAPI
+
+api = CapitalComAPI()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -120,21 +123,35 @@ async def redis_listener():
                         
                         logger.info(f"Conferma Tecnica XGBoost su {ticker}: {prob*100:.2f}% Prob. Rialzo")
                         
-                        # Se NLP dice POSITIVE e Math dice >0.6 (o viceversa) -> Allarme confermato!
+                        # Se NLP dice POSITIVE e Math dice >0.6 (o viceversa per lo Short) -> Allarme confermato!
                         is_confirmed = False
-                        if data['label'] == 'POSITIVE' and prob > 0.6: is_confirmed = True
-                        if data['label'] == 'NEGATIVE' and prob < 0.4: is_confirmed = True
+                        action_suggested = "HOLD"
                         
-                        if is_confirmed or prob > 0.85 or prob < 0.15:
+                        if data['label'] == 'POSITIVE' and prob > 0.6: 
+                            is_confirmed = True
+                            action_suggested = "BUY"
+                        if data['label'] == 'NEGATIVE' and prob < 0.4: 
+                            is_confirmed = True
+                            action_suggested = "SELL" # Short Selling!
+                            
+                        # Opportunità tecnica pura (Indipendentemente dalla news)
+                        if prob > 0.85:
+                            is_confirmed = True
+                            action_suggested = "BUY"
+                        if prob < 0.15:
+                            is_confirmed = True
+                            action_suggested = "SELL"
+                        
+                        if is_confirmed:
                             alert_payload = {
                                 "epic": ticker,
                                 "news_title": data['title'],
                                 "news_sentiment": data['label'],
                                 "news_score": data['score'],
                                 "xgboost_prob": prob,
-                                "action_suggested": "BUY" if prob > 0.5 else "SELL"
+                                "action_suggested": action_suggested
                             }
-                            logger.info(f"🔥 SEGNALE CONFERMATO! Invio al Portfolio Manager: {alert_payload}")
+                            logger.info(f"🔥 SEGNALE CONFERMATO ({action_suggested})! Invio al Portfolio Manager: {alert_payload}")
                             await redis_client.publish("portfolio_alerts", json.dumps(alert_payload))
                             
                     except Exception as e:
@@ -144,70 +161,155 @@ async def redis_listener():
             logger.error(f"Errore Listener Redis Math: {e}. Riconnessione tra 5s...")
             await asyncio.sleep(5)
 
-async def market_scanner_loop():
-    logger.info("Avviato Math Engine Market Scanner (Loop Continuo)...")
+async def portfolio_shield_loop():
+    logger.info("Avviato Scudo Portafoglio (Real-Time su posizioni aperte)...")
     global redis_client
-    # Lista di asset monitorati costantemente (Top Mercato + Portafoglio)
-    # In futuro questa lista può essere aggiornata dinamicamente dal DB
-    monitored_assets = ["AAPL", "MSFT", "TSLA", "BTC-USD", "ETH-USD", "GC=F"]
-    
     while True:
         try:
-            if not redis_client:
-                await asyncio.sleep(5)
+            if not redis_client or not api.is_authenticated:
+                await asyncio.sleep(10)
                 continue
                 
-            import yfinance as yf
-            for ticker in monitored_assets:
+            raw_positions = api.get_all_positions()
+            active_epics = set()
+            for p in raw_positions:
+                market = p.get('market', {})
+                epic = market.get('epic')
+                if epic: active_epics.add(epic)
+            
+            for epic in active_epics:
                 try:
-                    df_yf = yf.download(ticker, period="1y", interval="1d", progress=False)
-                    if len(df_yf) < 50: continue
-                    
-                    prices = []
-                    for date, row in df_yf.iterrows():
-                        open_p = row['Open'].iloc[0] if isinstance(row['Open'], pd.Series) else row['Open']
-                        high_p = row['High'].iloc[0] if isinstance(row['High'], pd.Series) else row['High']
-                        low_p = row['Low'].iloc[0] if isinstance(row['Low'], pd.Series) else row['Low']
-                        close_p = row['Close'].iloc[0] if isinstance(row['Close'], pd.Series) else row['Close']
-                        vol_p = row['Volume'].iloc[0] if isinstance(row['Volume'], pd.Series) else row['Volume']
-                        prices.append({
-                            'openPrice': {'bid': float(open_p)},
-                            'highPrice': {'bid': float(high_p)},
-                            'lowPrice': {'bid': float(low_p)},
-                            'closePrice': {'bid': float(close_p)},
-                            'lastTradedVolume': float(vol_p)
-                        })
-                    
+                    prices = api.get_historical_prices(epic, hours=100)
+                    if len(prices) < 50:
+                        continue
+                        
                     prob = run_xgboost_on_prices(prices)
                     
-                    # Se trova un'occasione pura (senza news) o un pericolo per il portafoglio
-                    if prob > 0.85 or prob < 0.15:
-                        action = "BUY_OPPORTUNITY" if prob > 0.85 else "SELL_WARNING"
-                        alert_payload = {
-                            "epic": ticker,
-                            "news_title": "Nessuna News (Analisi Tecnica Pura)",
-                            "news_sentiment": "NEUTRAL",
-                            "news_score": 0.5,
+                    if prob < 0.15:
+                        action = "SELL"
+                        alert = {
+                            "epic": epic,
+                            "news_title": "Allarme Scudo: Crollo Tecnico Imminente!",
+                            "news_sentiment": "NEGATIVE",
+                            "news_score": 1.0,
                             "xgboost_prob": prob,
                             "action_suggested": action
                         }
-                        logger.info(f"📊 ALERT TECNICO {action} su {ticker}: Prob {prob*100:.2f}%. Invio al Portfolio Manager.")
-                        await redis_client.publish("portfolio_alerts", json.dumps(alert_payload))
+                        logger.warning(f"🛡️ SCUDO ATTIVO! Crollo rilevato su {epic}: Prob Rialzo {prob*100:.2f}%. Invio SELL_WARNING (Short/Chiusura).")
+                        await redis_client.publish("portfolio_alerts", json.dumps(alert))
+                    elif prob > 0.85:
+                        action = "BUY"
+                        alert = {
+                            "epic": epic,
+                            "news_title": "Allarme Scudo: Spike Tecnico Imminente!",
+                            "news_sentiment": "POSITIVE",
+                            "news_score": 1.0,
+                            "xgboost_prob": prob,
+                            "action_suggested": action
+                        }
+                        logger.info(f"🛡️ SCUDO ATTIVO! Rally rilevato su {epic}: Prob Rialzo {prob*100:.2f}%. Invio BUY_WARNING.")
+                        await redis_client.publish("portfolio_alerts", json.dumps(alert))
                         
                 except Exception as e:
-                    logger.warning(f"Errore scansione tecnica su {ticker}: {e}")
-            
-            # Scansiona tutto il mercato ogni ora (per non farci bannare dalle API)
-            await asyncio.sleep(3600)
+                    logger.warning(f"Errore Scudo su {epic}: {e}")
+                    
+            await asyncio.sleep(45) # Controllo ogni 45 secondi
             
         except Exception as e:
-            logger.error(f"Errore Market Scanner Loop: {e}")
+            logger.error(f"Errore Loop Scudo: {e}")
+            await asyncio.sleep(10)
+
+
+async def market_hunter_loop():
+    logger.info("Avviato Cacciatore di Occasioni (Mega-Lista multi-direzionale)...")
+    global redis_client
+    
+    mega_list = [
+        "AAPL", "MSFT", "TSLA", "AMZN", "GOOGL", "NVDA", "META", 
+        "BTCUSD", "ETHUSD", "XRPUSD", "LTCUSD", "DOGEUSD",
+        "GOLD", "SILVER", "OIL_BRENT", "NATURALGAS",
+        "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD",
+        "US30", "US100", "US500", "GER40", "UK100"
+    ]
+    
+    while True:
+        try:
+            if not redis_client or not api.is_authenticated:
+                await asyncio.sleep(10)
+                continue
+                
+            for epic in mega_list:
+                try:
+                    prices = api.get_historical_prices(epic, hours=100)
+                    if len(prices) < 50:
+                        # Fallback su YFinance se non lo trova su Capital.com con questo nome
+                        import yfinance as yf
+                        df_yf = yf.download(epic, period="1y", interval="1d", progress=False)
+                        if len(df_yf) >= 50:
+                            prices = []
+                            for date, row in df_yf.iterrows():
+                                open_p = row['Open'].iloc[0] if isinstance(row['Open'], pd.Series) else row['Open']
+                                high_p = row['High'].iloc[0] if isinstance(row['High'], pd.Series) else row['High']
+                                low_p = row['Low'].iloc[0] if isinstance(row['Low'], pd.Series) else row['Low']
+                                close_p = row['Close'].iloc[0] if isinstance(row['Close'], pd.Series) else row['Close']
+                                vol_p = row['Volume'].iloc[0] if isinstance(row['Volume'], pd.Series) else row['Volume']
+                                prices.append({
+                                    'openPrice': {'bid': float(open_p)},
+                                    'highPrice': {'bid': float(high_p)},
+                                    'lowPrice': {'bid': float(low_p)},
+                                    'closePrice': {'bid': float(close_p)},
+                                    'lastTradedVolume': float(vol_p)
+                                })
+                        else:
+                            await asyncio.sleep(1) # rate limit
+                            continue
+                    
+                    prob = run_xgboost_on_prices(prices)
+                    
+                    if prob > 0.85:
+                        alert = {
+                            "epic": epic,
+                            "news_title": "Cacciatore: Occasione Tecnica Pura (LONG)",
+                            "news_sentiment": "POSITIVE",
+                            "news_score": 1.0,
+                            "xgboost_prob": prob,
+                            "action_suggested": "BUY"
+                        }
+                        logger.info(f"🏹 CACCIATORE: Trova LONG su {epic} (Prob {prob*100:.2f}%). Invio.")
+                        await redis_client.publish("portfolio_alerts", json.dumps(alert))
+                    elif prob < 0.15:
+                        alert = {
+                            "epic": epic,
+                            "news_title": "Cacciatore: Occasione Tecnica Pura (SHORT)",
+                            "news_sentiment": "NEGATIVE",
+                            "news_score": 1.0,
+                            "xgboost_prob": prob,
+                            "action_suggested": "SELL"
+                        }
+                        logger.info(f"🏹 CACCIATORE: Trova SHORT su {epic} (Prob {prob*100:.2f}%). Invio.")
+                        await redis_client.publish("portfolio_alerts", json.dumps(alert))
+                        
+                except Exception as e:
+                    pass
+                
+                await asyncio.sleep(3) # Pausa tra un asset e l'altro per non farci bannare
+                
+            # Finita la mega lista, aspetta 5 minuti
+            await asyncio.sleep(300)
+            
+        except Exception as e:
+            logger.error(f"Errore Cacciatore: {e}")
             await asyncio.sleep(60)
 
 @app.on_event("startup")
 async def startup_event():
+    logger.info("Connessione a Capital.com in corso per il Math Engine...")
+    success = api.authenticate()
+    if success:
+        logger.info("🚀 API Capital.com Connessa per il Math Engine!")
     asyncio.create_task(redis_listener())
-    asyncio.create_task(market_scanner_loop())
+    asyncio.create_task(portfolio_shield_loop())
+    asyncio.create_task(market_hunter_loop())
 
 @app.post("/predict")
 def calculate_probability(request: PriceData):
