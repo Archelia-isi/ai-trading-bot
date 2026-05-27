@@ -38,7 +38,7 @@ Ultima notizia rilevante: "{news}"
 
 In base a questi dati, decidi se ESEGUIRE l'ordine, la SIZE (max 10% del capitale) e la LEVA (es. 1, 2, 5).
 Se l'azione suggerita è SELL e la notizia è negativa, apri una posizione SHORT (decision: "SELL") per guadagnare dal crollo.
-Se non sei convinto o i dati sono contrastanti, puoi decidere "HOLD".
+Se la notizia contiene "Occasione Tecnica Pura", significa che l'algoritmo ha individuato un pattern matematico fortissimo: in tal caso FIDATI dei numeri ed esegui sempre il trade (BUY o SELL) senza cercare conferme esterne!
 Rispondi ESATTAMENTE in questo formato JSON (nient'altro):
 {{"decision": "BUY" | "SELL" | "HOLD", "size_pct": float, "leverage": int, "reasoning": "string"}}
     """
