@@ -16,24 +16,6 @@ AUDIT_SERVICE_URL = os.getenv("AUDIT_SERVICE_URL", "http://localhost:8002")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-async def portfolio_manager_loop():
-    logger.info("Avviato Portfolio Manager Worker (Ascolto Allarmi)...")
-    
-    # Inizializza modello Gemini
-    try:
-        model = genai.GenerativeModel('gemini-1.5-pro-latest')
-    except Exception as e:
-        logger.error(f"Errore caricamento Gemini: {e}")
-        model = None
-
-    while True:
-        try:
-            r = await aioredis.from_url(REDIS_URL)
-            pubsub = r.pubsub()
-            await pubsub.subscribe("portfolio_alerts")
-            
-            logger.info("In ascolto sul canale 'portfolio_alerts'...")
-            
 async def process_alert(data, model):
     epic = data.get('epic')
     action = data.get('action_suggested')
