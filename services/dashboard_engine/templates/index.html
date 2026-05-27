@@ -346,6 +346,33 @@
             }
         }
 
+        // Smooth Number Animation
+        function animateValue(element, start, end, duration, formatFn) {
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                // easeOutQuart
+                const easeProgress = 1 - Math.pow(1 - progress, 4);
+                const current = start + easeProgress * (end - start);
+                element.textContent = formatFn(current);
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                } else {
+                    element.textContent = formatFn(end);
+                }
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        // Keep track of current values to animate from
+        const currentVals = {
+            total: 0,
+            avail: 0,
+            invest: 0,
+            pnl: 0
+        };
+
         function handleMessage(channel, data) {
             const time = new Date().toLocaleTimeString();
             
@@ -397,14 +424,32 @@
             }
             
             else if (channel === 'portfolio_status') {
-                // Update Widgets
-                document.getElementById('val-total-cap').textContent = '$' + data.total_capital.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                document.getElementById('val-avail-cap').textContent = '$' + data.available_capital.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                document.getElementById('val-invest-cap').textContent = '$' + data.invested_capital.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                
+                // Update Widgets with Animation
+                const tCapEl = document.getElementById('val-total-cap');
+                const aCapEl = document.getElementById('val-avail-cap');
+                const iCapEl = document.getElementById('val-invest-cap');
                 const pnlEl = document.getElementById('val-pnl');
-                pnlEl.textContent = (data.current_pnl_pct > 0 ? '+' : '') + data.current_pnl_pct.toFixed(2) + '%';
-                pnlEl.className = 'widget-value ' + (data.current_pnl_pct > 0 ? 'pos' : (data.current_pnl_pct < 0 ? 'neg' : ''));
+
+                const formatDollar = (val) => '$' + val.toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                const formatPct = (val) => (val > 0 ? '+' : '') + val.toFixed(2) + '%';
+
+                if (currentVals.total !== data.total_capital) {
+                    animateValue(tCapEl, currentVals.total, data.total_capital, 1000, formatDollar);
+                    currentVals.total = data.total_capital;
+                }
+                if (currentVals.avail !== data.available_capital) {
+                    animateValue(aCapEl, currentVals.avail, data.available_capital, 1000, formatDollar);
+                    currentVals.avail = data.available_capital;
+                }
+                if (currentVals.invest !== data.invested_capital) {
+                    animateValue(iCapEl, currentVals.invest, data.invested_capital, 1000, formatDollar);
+                    currentVals.invest = data.invested_capital;
+                }
+                if (currentVals.pnl !== data.current_pnl_pct) {
+                    animateValue(pnlEl, currentVals.pnl, data.current_pnl_pct, 1000, formatPct);
+                    pnlEl.className = 'widget-value ' + (data.current_pnl_pct > 0 ? 'pos' : (data.current_pnl_pct < 0 ? 'neg' : ''));
+                    currentVals.pnl = data.current_pnl_pct;
+                }
                 
                 // Update Table Smoothly
                 const tbody = document.querySelector('#table-positions tbody');
