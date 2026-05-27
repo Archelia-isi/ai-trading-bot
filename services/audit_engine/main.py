@@ -30,8 +30,8 @@ api = CapitalComAPI()
 
 # Stato globale fittizio del portafoglio (Ora aggiornato dinamicamente da Capital.com)
 portfolio_state = {
-    "total_capital": 10000.0,
-    "daily_start_capital": 10000.0,
+    "total_capital": 0.0,
+    "daily_start_capital": 0.0,
     "current_pnl_pct": 0.0,
     "open_positions": [],
     "is_trading_locked": False
@@ -87,7 +87,7 @@ async def audit_order(req: OrderRequest):
         # Convertiamo la percentuale in lotti reali
         market_price = api.get_market_price(req.epic)
         margin_info = api.get_margin_info()
-        equity = margin_info.get("equity", 10000.0)
+        equity = margin_info.get("equity", 0.0)
         
         amount_to_invest = equity * (final_size / 100.0)
         total_exposure = amount_to_invest * final_leverage
@@ -129,7 +129,7 @@ async def risk_monitor_loop():
             if api.is_authenticated:
                 # 1. Recupera i dati reali da Capital.com
                 margin_info = api.get_margin_info()
-                portfolio_state["total_capital"] = margin_info.get("equity", 10000.0)
+                portfolio_state["total_capital"] = margin_info.get("equity", 0.0)
                 
                 raw_positions = api.get_all_positions()
                 open_positions = []

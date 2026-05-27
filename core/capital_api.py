@@ -60,7 +60,7 @@ class CapitalComAPI:
     def get_account_balance(self) -> float:
         """Recupera il saldo del conto Demo. Restituisce un valore fittizio se in modalità MOCK."""
         if not self.is_authenticated:
-            return 10000.00 # Saldo fittizio per poter sviluppare la UI se mock attivo
+            return 0.00 # Saldo fittizio per poter sviluppare la UI se mock attivo
             
         try:
             response = requests.get(f"{self.base_url}/accounts", headers=self._get_headers(with_auth=True), timeout=10)
@@ -94,7 +94,7 @@ class CapitalComAPI:
     def get_margin_info(self) -> dict:
         """Restituisce equity e margine disponibile per calcolare l'esposizione."""
         if not self.is_authenticated:
-            return {"equity": 10000.0, "available": 10000.0}
+            return {"equity": 0.0, "available": 0.0}
         try:
             response = requests.get(f"{self.base_url}/accounts", headers=self._get_headers(with_auth=True), timeout=10)
             if response.status_code == 200:
