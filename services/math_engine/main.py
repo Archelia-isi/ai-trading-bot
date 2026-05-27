@@ -292,7 +292,7 @@ async def market_hunter_loop():
                 except Exception as e:
                     pass
                 
-                await asyncio.sleep(3) # Pausa tra un asset e l'altro per non farci bannare
+                await asyncio.sleep(10) # Pausa estesa tra un asset e l'altro per non superare il rate limit (15 RPM) di Gemini Free
                 
             # Finita la mega lista, aspetta 5 minuti
             await asyncio.sleep(300)

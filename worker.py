@@ -44,9 +44,26 @@ Rispondi ESATTAMENTE in questo formato JSON (nient'altro):
     """
     
     try:
-        # Esecuzione in pool di thread paralleli per non bloccare il loop
-        response = await asyncio.to_thread(model.generate_content, prompt)
-        testo_gemini = response.text.strip().replace('```json', '').replace('```', '')
+        # Retry logic per limiti API (429 Resource Exhausted)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = await asyncio.to_thread(
+                    model.generate_content, 
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        response_mime_type="application/json",
+                    )
+                )
+                testo_gemini = response.text.strip()
+                break
+            except Exception as api_err:
+                if "429" in str(api_err) or "quota" in str(api_err).lower():
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(10 * (attempt + 1))
+                        continue
+                raise api_err
+                
         decision_data = json.loads(testo_gemini)
         
         logger.info(f"Decisione Gemini: {decision_data['decision']} su {epic}. Motivazione: {decision_data['reasoning']}")
