@@ -7,6 +7,7 @@ import requests
 from typing import Optional
 import json
 import redis.asyncio as aioredis
+from capital_api import CapitalComAPI
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
@@ -24,7 +25,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Audit & Risk Management Engine")
 
-# Stato globale fittizio del portafoglio (In un sistema reale, legge da DB o Broker)
+# Inizializza Capital.com API
+api = CapitalComAPI()
+
+# Stato globale fittizio del portafoglio (Ora aggiornato dinamicamente da Capital.com)
 portfolio_state = {
     "total_capital": 10000.0,
     "daily_start_capital": 10000.0,
@@ -78,14 +82,37 @@ async def audit_order(req: OrderRequest):
     logger.info(f"✅ AUDIT APPROVE: Ordine validato! Esecuzione su Capital.com -> {req.epic} {req.direction} {final_size}% L{final_leverage}x")
     await publish_audit_action(req.epic, f"{req.direction} {final_size}% L{final_leverage}x", "APPROVED", "Risk Checks Passed")
     
-    # Mock salvataggio posizione
-    portfolio_state["open_positions"].append({
-        "epic": req.epic,
-        "direction": req.direction,
-        "size": final_size,
-        "leverage": final_leverage,
-        "pnl_pct": 0.0 # da aggiornare in tempo reale
-    })
+    # ESECUZIONE REALE SU CAPITAL.COM
+    if api.is_authenticated:
+        # Convertiamo la percentuale in lotti reali
+        market_price = api.get_market_price(req.epic)
+        margin_info = api.get_margin_info()
+        equity = margin_info.get("equity", 10000.0)
+        
+        amount_to_invest = equity * (final_size / 100.0)
+        total_exposure = amount_to_invest * final_leverage
+        lot_size = (total_exposure / market_price) if market_price > 0 else 0.1
+        
+        logger.info(f"Capital.com: Calcolo Lotti -> Equity: {equity}, Investito: {amount_to_invest}, Leva: {final_leverage}, Prezzo: {market_price} = Size {lot_size} lotti")
+        
+        # Piazziamo fisicamente l'ordine
+        res = api.place_order(req.epic, req.direction, lot_size)
+        if res.get("status") != "success":
+            logger.error(f"FALLIMENTO INVIO ORDINE CAPITAL.COM: {res}")
+            await publish_audit_action(req.epic, f"{req.direction} {lot_size} lotti", "REJECTED", f"Broker API Error: {res.get('message', 'Errore Sconosciuto')}")
+            return {"status": "error", "reason": "Broker API Error"}
+        else:
+            await publish_audit_action(req.epic, f"{req.direction} {lot_size} lotti", "SYSTEM", "Ordine piazzato fisicamente su broker.")
+    else:
+        logger.warning("Capital.com non connesso. Esecuzione simulata (Mock).")
+        # Mock salvataggio posizione
+        portfolio_state["open_positions"].append({
+            "epic": req.epic,
+            "direction": req.direction,
+            "size": final_size,
+            "leverage": final_leverage,
+            "pnl_pct": 0.0
+        })
     
     # TODO: Logga la decisione finale di Gemini e dell'Auditor sul Database Centrale per l'auto-apprendimento
     
@@ -99,8 +126,44 @@ async def risk_monitor_loop():
     logger.info("Avviato Monitor Rischio Continuo dell'Auditor...")
     while True:
         try:
-            # 1. Calcolo PnL Globale Giornaliero (Mock - In realtà calcolato dai prezzi in tempo reale)
-            portfolio_state["current_pnl_pct"] = sum(p['pnl_pct'] for p in portfolio_state["open_positions"])
+            if api.is_authenticated:
+                # 1. Recupera i dati reali da Capital.com
+                margin_info = api.get_margin_info()
+                portfolio_state["total_capital"] = margin_info.get("equity", 10000.0)
+                
+                raw_positions = api.get_all_positions()
+                open_positions = []
+                current_pnl_usd = 0.0
+                
+                for p in raw_positions:
+                    pos = p.get('position', {})
+                    market = p.get('market', {})
+                    
+                    epic = market.get('epic', 'UNKNOWN')
+                    direction = pos.get('direction', 'BUY')
+                    size_abs = pos.get('size', 0)
+                    leverage = market.get('leverage', 1)
+                    upl = pos.get('upl', 0.0)
+                    
+                    # Calcolo approssimativo della % investita
+                    size_pct = 0.0
+                    if portfolio_state["total_capital"] > 0:
+                        size_pct = ((size_abs * market.get('offer', 1)) / leverage / portfolio_state["total_capital"]) * 100
+                        
+                    open_positions.append({
+                        "epic": epic,
+                        "direction": direction,
+                        "size": size_pct,
+                        "leverage": leverage,
+                        "pnl_pct": (upl / portfolio_state["total_capital"] * 100) if portfolio_state["total_capital"] > 0 else 0.0
+                    })
+                    current_pnl_usd += upl
+                    
+                portfolio_state["open_positions"] = open_positions
+                portfolio_state["current_pnl_pct"] = (current_pnl_usd / portfolio_state["total_capital"] * 100) if portfolio_state["total_capital"] > 0 else 0.0
+            else:
+                # Mock PnL
+                portfolio_state["current_pnl_pct"] = sum(p['pnl_pct'] for p in portfolio_state["open_positions"])
             
             # HARD RULE: Global Take Profit 1%
             if portfolio_state["current_pnl_pct"] >= 1.0 and not portfolio_state["is_trading_locked"]:
@@ -145,4 +208,10 @@ async def risk_monitor_loop():
 
 @app.on_event("startup")
 async def startup_event():
+    logger.info("Connessione a Capital.com in corso...")
+    success = api.authenticate()
+    if success:
+        logger.info("🚀 API Capital.com Connessa! Trading LIVE attivo.")
+    else:
+        logger.warning("⚠️ API Capital.com Fallita. Trading simulato attivo.")
     asyncio.create_task(risk_monitor_loop())
