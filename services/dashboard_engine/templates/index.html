@@ -312,7 +312,10 @@
         const odoAvail = new Odometer({ el: document.getElementById('val-avail-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
         const odoInvest = new Odometer({ el: document.getElementById('val-invest-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
         const odoPnl = new Odometer({ el: document.getElementById('val-pnl'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
-
+        
+        // Cache per evitare animazioni a vuoto
+        const currentVals = { total: -1, avail: -1, invest: -1, pnl: null };
+        
         // Gestione WebSocket
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -405,16 +408,35 @@
             }
             
             else if (channel === 'portfolio_status') {
-                // Update Odometer values directly
-                odoTotal.update(data.total_capital);
-                odoAvail.update(data.available_capital);
-                odoInvest.update(data.invested_capital);
+                // Arrotonda ai due decimali per i controlli ed evita falsi scatti
+                const newTotal = parseFloat(data.total_capital.toFixed(2));
+                const newAvail = parseFloat(data.available_capital.toFixed(2));
+                const newInvest = parseFloat(data.invested_capital.toFixed(2));
+                const newPnl = parseFloat(data.current_pnl_pct.toFixed(2));
                 
-                const isPos = data.current_pnl_pct > 0;
-                const isNeg = data.current_pnl_pct < 0;
-                document.getElementById('pnl-sign').textContent = isPos ? '+' : (isNeg ? '-' : '');
-                document.getElementById('val-pnl-container').className = 'widget-value ' + (isPos ? 'pos' : (isNeg ? 'neg' : ''));
-                odoPnl.update(Math.abs(data.current_pnl_pct));
+                if (currentVals.total !== newTotal) {
+                    odoTotal.update(newTotal);
+                    currentVals.total = newTotal;
+                }
+                
+                if (currentVals.avail !== newAvail) {
+                    odoAvail.update(newAvail);
+                    currentVals.avail = newAvail;
+                }
+                
+                if (currentVals.invest !== newInvest) {
+                    odoInvest.update(newInvest);
+                    currentVals.invest = newInvest;
+                }
+                
+                if (currentVals.pnl !== newPnl) {
+                    const isPos = newPnl > 0;
+                    const isNeg = newPnl < 0;
+                    document.getElementById('pnl-sign').textContent = isPos ? '+' : (isNeg ? '-' : '');
+                    document.getElementById('val-pnl-container').className = 'widget-value ' + (isPos ? 'pos' : (isNeg ? 'neg' : ''));
+                    odoPnl.update(Math.abs(newPnl));
+                    currentVals.pnl = newPnl;
+                }
                 
                 // Update Table Smoothly
                 const tbody = document.querySelector('#table-positions tbody');
