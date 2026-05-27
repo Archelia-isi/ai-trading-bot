@@ -12,7 +12,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Mission Control Dashboard")
-templates = Jinja2Templates(directory="services/dashboard_engine/templates")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
