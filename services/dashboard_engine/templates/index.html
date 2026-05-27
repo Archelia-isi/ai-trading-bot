@@ -147,6 +147,77 @@
         .badge.buy { color: var(--pos-color); background: rgba(76, 175, 80, 0.1); }
         .badge.sell { color: var(--neg-color); background: rgba(244, 67, 54, 0.1); }
 
+        /* Portfolio Status Styles */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto 30px auto;
+        }
+
+        .status-widget {
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 15px 20px;
+            flex: 1;
+            text-align: center;
+            box-shadow: 0 4px 15px 0 rgba(0, 0, 0, 0.2);
+        }
+
+        .widget-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 5px;
+        }
+
+        .widget-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .widget-value.pos { color: var(--pos-color); }
+        .widget-value.neg { color: var(--neg-color); }
+
+        .portfolio-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: 15px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto 30px auto;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .portfolio-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        .portfolio-table th {
+            color: rgba(255, 255, 255, 0.6);
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px;
+            font-weight: 600;
+        }
+
+        .portfolio-table td {
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .portfolio-table tr:last-child td { border-bottom: none; }
+        .pos-text { color: var(--pos-color); }
+        .neg-text { color: var(--neg-color); }
+
         @keyframes slideIn {
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
@@ -159,6 +230,45 @@
         <h1>Mission Control <span class="status-dot"></span></h1>
         <p>Live AI Hedge Fund Monitoring</p>
     </header>
+
+    <div class="status-bar">
+        <div class="status-widget">
+            <div class="widget-label">Capitale Totale</div>
+            <div class="widget-value" id="val-total-cap">$...</div>
+        </div>
+        <div class="status-widget">
+            <div class="widget-label">Capitale Disponibile</div>
+            <div class="widget-value" id="val-avail-cap">$...</div>
+        </div>
+        <div class="status-widget">
+            <div class="widget-label">Capitale Investito</div>
+            <div class="widget-value" id="val-invest-cap">$...</div>
+        </div>
+        <div class="status-widget">
+            <div class="widget-label">PnL Globale</div>
+            <div class="widget-value" id="val-pnl">...</div>
+        </div>
+    </div>
+
+    <div class="portfolio-panel">
+        <div class="panel-header"><span class="panel-icon">💼</span> Posizioni Aperte</div>
+        <div class="table-container">
+            <table class="portfolio-table" id="table-positions">
+                <thead>
+                    <tr>
+                        <th>Asset</th>
+                        <th>Direzione</th>
+                        <th>Size %</th>
+                        <th>Leva</th>
+                        <th>PnL %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="5" style="text-align: center; color: rgba(255,255,255,0.4);">In attesa di dati...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 
     <div class="grid-container">
         <!-- Panel 1: NLP -->
@@ -284,6 +394,39 @@
                     <div style="margin-top:5px; font-size:0.8rem;">${data.details}</div>
                 `;
                 addCard('feed-audit', html, cls);
+            }
+            
+            else if (channel === 'portfolio_status') {
+                // Update Widgets
+                document.getElementById('val-total-cap').textContent = '$' + data.total_capital.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                document.getElementById('val-avail-cap').textContent = '$' + data.available_capital.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                document.getElementById('val-invest-cap').textContent = '$' + data.invested_capital.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                
+                const pnlEl = document.getElementById('val-pnl');
+                pnlEl.textContent = (data.current_pnl_pct > 0 ? '+' : '') + data.current_pnl_pct.toFixed(2) + '%';
+                pnlEl.className = 'widget-value ' + (data.current_pnl_pct > 0 ? 'pos' : (data.current_pnl_pct < 0 ? 'neg' : ''));
+                
+                // Update Table
+                const tbody = document.querySelector('#table-positions tbody');
+                tbody.innerHTML = ''; 
+                
+                if (data.open_positions.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: rgba(255,255,255,0.4);">Nessuna posizione aperta</td></tr>';
+                } else {
+                    data.open_positions.forEach(pos => {
+                        const tr = document.createElement('tr');
+                        const isBuy = pos.direction === 'BUY';
+                        const pnlCls = pos.pnl_pct > 0 ? 'pos-text' : (pos.pnl_pct < 0 ? 'neg-text' : '');
+                        tr.innerHTML = `
+                            <td><strong>${pos.epic}</strong></td>
+                            <td><span class="badge ${isBuy ? 'buy' : 'sell'}">${pos.direction}</span></td>
+                            <td>${pos.size.toFixed(2)}%</td>
+                            <td>${pos.leverage}x</td>
+                            <td class="${pnlCls}"><strong>${pos.pnl_pct > 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%</strong></td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
             }
         }
 

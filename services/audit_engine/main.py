@@ -118,6 +118,24 @@ async def risk_monitor_loop():
                 
             # HARD RULE: Time Window Lock (Si attiva a 30 min dalla chiusura di Wall Street/Europa)
             # HARD RULE: Flash Crash Kill Switch e Dynamic ATR (Richiede interrogazione prezzi)
+            
+            # Calcolo metriche per la Dashboard
+            current_exposure_pct = sum(p['size'] for p in portfolio_state["open_positions"])
+            invested_capital = portfolio_state["total_capital"] * (current_exposure_pct / 100.0)
+            available_capital = portfolio_state["total_capital"] - invested_capital
+            
+            status_payload = {
+                "total_capital": portfolio_state["total_capital"],
+                "invested_capital": invested_capital,
+                "available_capital": available_capital,
+                "current_pnl_pct": portfolio_state["current_pnl_pct"],
+                "open_positions": portfolio_state["open_positions"]
+            }
+            try:
+                r = await aioredis.from_url(REDIS_URL)
+                await r.publish("portfolio_status", json.dumps(status_payload))
+            except Exception as e:
+                logger.error(f"Errore publish portfolio_status: {e}")
                 
             await asyncio.sleep(5) # Controlla il rischio ogni 5 secondi!
             
