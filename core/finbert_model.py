@@ -1,36 +1,30 @@
 import logging
-from transformers import pipeline
+import os
+import requests
 
 logger = logging.getLogger(__name__)
 
 class FinBERTModel:
     def __init__(self):
-        logger.info("Avvio inizializzazione FinBERT (potrebbe richiedere il download la prima volta)...")
-        try:
-            # Carichiamo la pipeline di sentiment analysis specifica per testi finanziari
-            self.nlp = pipeline("sentiment-analysis", model="ProsusAI/finbert")
-            logger.info("✅ Modello FinBERT caricato con successo in memoria.")
-        except Exception as e:
-            logger.error(f"Errore caricamento FinBERT: {e}")
-            self.nlp = None
+        self.api_url = os.getenv("NLP_SERVICE_URL", "http://localhost:8000")
+        logger.info(f"FinBERT connesso al microservizio NLP: {self.api_url}")
 
     def analyze_news_sentiment(self, text: str) -> dict:
         """
-        Analizza un testo finanziario con FinBERT.
-        Ritorna un dizionario es. {'label': 'positive', 'score': 0.95}
+        Analizza un testo finanziario tramite il Microservizio NLP.
+        Ritorna un dizionario es. {'label': 'POSITIVE', 'score': 0.95}
         """
-        if not self.nlp:
-            logger.warning("FinBERT non disponibile, restituisco neutro.")
-            return {"label": "neutral", "score": 0.5}
-            
         try:
-            # FinBERT ha un limite di token (512). Tagliamo il testo se è troppo lungo.
             max_len = 500
             safe_text = text[:max_len] if len(text) > max_len else text
             
-            result = self.nlp(safe_text)[0]
-            # label sarà 'positive', 'negative' o 'neutral'
-            return result
+            res = requests.post(f"{self.api_url}/analyze", json={"text": safe_text}, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                return {"label": data.get("label", "NEUTRAL").lower(), "score": data.get("score", 0.5)}
+            else:
+                logger.warning(f"Errore dal server NLP: {res.status_code}")
+                return {"label": "neutral", "score": 0.5}
         except Exception as e:
-            logger.error(f"Errore esecuzione FinBERT: {e}")
+            logger.error(f"Errore di rete verso il server NLP: {e}")
             return {"label": "neutral", "score": 0.5}
