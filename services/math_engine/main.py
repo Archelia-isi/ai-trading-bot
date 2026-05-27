@@ -135,10 +135,10 @@ async def redis_listener():
                             action_suggested = "SELL" # Short Selling!
                             
                         # Opportunità tecnica pura (Indipendentemente dalla news)
-                        if prob > 0.85:
+                        if prob >= 0.65:
                             is_confirmed = True
                             action_suggested = "BUY"
-                        if prob < 0.15:
+                        if prob <= 0.35:
                             is_confirmed = True
                             action_suggested = "SELL"
                         
@@ -185,7 +185,7 @@ async def portfolio_shield_loop():
                         
                     prob = run_xgboost_on_prices(prices)
                     
-                    if prob < 0.15:
+                    if prob <= 0.35:
                         action = "SELL"
                         alert = {
                             "epic": epic,
@@ -197,7 +197,7 @@ async def portfolio_shield_loop():
                         }
                         logger.warning(f"🛡️ SCUDO ATTIVO! Crollo rilevato su {epic}: Prob Rialzo {prob*100:.2f}%. Invio SELL_WARNING (Short/Chiusura).")
                         await redis_client.publish("portfolio_alerts", json.dumps(alert))
-                    elif prob > 0.85:
+                    elif prob >= 0.65:
                         action = "BUY"
                         alert = {
                             "epic": epic,
@@ -266,7 +266,7 @@ async def market_hunter_loop():
                     
                     prob = run_xgboost_on_prices(prices)
                     
-                    if prob > 0.85:
+                    if prob >= 0.65:
                         alert = {
                             "epic": epic,
                             "news_title": "Cacciatore: Occasione Tecnica Pura (LONG)",
@@ -277,7 +277,7 @@ async def market_hunter_loop():
                         }
                         logger.info(f"🏹 CACCIATORE: Trova LONG su {epic} (Prob {prob*100:.2f}%). Invio.")
                         await redis_client.publish("portfolio_alerts", json.dumps(alert))
-                    elif prob < 0.15:
+                    elif prob <= 0.35:
                         alert = {
                             "epic": epic,
                             "news_title": "Cacciatore: Occasione Tecnica Pura (SHORT)",
