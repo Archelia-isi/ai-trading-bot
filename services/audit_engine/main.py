@@ -129,7 +129,9 @@ async def risk_monitor_loop():
             if api.is_authenticated:
                 # 1. Recupera i dati reali da Capital.com
                 margin_info = api.get_margin_info()
-                portfolio_state["total_capital"] = margin_info.get("equity", 0.0)
+                new_equity = margin_info.get("equity", 0.0)
+                if new_equity > 0:
+                    portfolio_state["total_capital"] = new_equity
                 
                 raw_positions = api.get_all_positions()
                 open_positions = []
