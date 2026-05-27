@@ -51,9 +51,7 @@ Rispondi ESATTAMENTE in questo formato JSON (nient'altro):
                 response = await asyncio.to_thread(
                     model.generate_content, 
                     prompt,
-                    generation_config=genai.types.GenerationConfig(
-                        response_mime_type="application/json",
-                    )
+                    generation_config={"response_mime_type": "application/json"}
                 )
                 testo_gemini = response.text.strip()
                 break
