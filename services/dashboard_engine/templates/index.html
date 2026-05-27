@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mission Control | AI Hedge Fund</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/themes/odometer-theme-minimal.min.css" />
     <style>
         :root {
             --bg-color: #0b0c10;
@@ -234,19 +235,19 @@
     <div class="status-bar">
         <div class="status-widget">
             <div class="widget-label">Capitale Totale</div>
-            <div class="widget-value" id="val-total-cap">$...</div>
+            <div class="widget-value">$<span id="val-total-cap" class="odometer">0.00</span></div>
         </div>
         <div class="status-widget">
             <div class="widget-label">Capitale Disponibile</div>
-            <div class="widget-value" id="val-avail-cap">$...</div>
+            <div class="widget-value">$<span id="val-avail-cap" class="odometer">0.00</span></div>
         </div>
         <div class="status-widget">
             <div class="widget-label">Capitale Investito</div>
-            <div class="widget-value" id="val-invest-cap">$...</div>
+            <div class="widget-value">$<span id="val-invest-cap" class="odometer">0.00</span></div>
         </div>
         <div class="status-widget">
             <div class="widget-label">PnL Globale</div>
-            <div class="widget-value" id="val-pnl">...</div>
+            <div class="widget-value" id="val-pnl-container"><span id="pnl-sign"></span><span id="val-pnl" class="odometer">0.00</span>%</div>
         </div>
     </div>
 
@@ -346,33 +347,16 @@
             }
         }
 
-        // Smooth Number Animation
-        function animateValue(element, start, end, duration, formatFn) {
-            let startTimestamp = null;
-            const step = (timestamp) => {
-                if (!startTimestamp) startTimestamp = timestamp;
-                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-                // easeOutQuart
-                const easeProgress = 1 - Math.pow(1 - progress, 4);
-                const current = start + easeProgress * (end - start);
-                element.textContent = formatFn(current);
-                if (progress < 1) {
-                    window.requestAnimationFrame(step);
-                } else {
-                    element.textContent = formatFn(end);
-                }
-            };
-            window.requestAnimationFrame(step);
-        }
-
-        // Keep track of current values to animate from
-        const currentVals = {
-            total: 0,
-            avail: 0,
-            invest: 0,
-            pnl: 0
-        };
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
+    <script>
+        // Inizializzazione Odometer
+        const odoTotal = new Odometer({ el: document.getElementById('val-total-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
+        const odoAvail = new Odometer({ el: document.getElementById('val-avail-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
+        const odoInvest = new Odometer({ el: document.getElementById('val-invest-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
+        const odoPnl = new Odometer({ el: document.getElementById('val-pnl'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
+        
+        // Gestione WebSocket
+        
         function handleMessage(channel, data) {
             const time = new Date().toLocaleTimeString();
             
@@ -424,32 +408,16 @@
             }
             
             else if (channel === 'portfolio_status') {
-                // Update Widgets with Animation
-                const tCapEl = document.getElementById('val-total-cap');
-                const aCapEl = document.getElementById('val-avail-cap');
-                const iCapEl = document.getElementById('val-invest-cap');
-                const pnlEl = document.getElementById('val-pnl');
-
-                const formatDollar = (val) => '$' + val.toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                const formatPct = (val) => (val > 0 ? '+' : '') + val.toFixed(2) + '%';
-
-                if (currentVals.total !== data.total_capital) {
-                    animateValue(tCapEl, currentVals.total, data.total_capital, 1000, formatDollar);
-                    currentVals.total = data.total_capital;
-                }
-                if (currentVals.avail !== data.available_capital) {
-                    animateValue(aCapEl, currentVals.avail, data.available_capital, 1000, formatDollar);
-                    currentVals.avail = data.available_capital;
-                }
-                if (currentVals.invest !== data.invested_capital) {
-                    animateValue(iCapEl, currentVals.invest, data.invested_capital, 1000, formatDollar);
-                    currentVals.invest = data.invested_capital;
-                }
-                if (currentVals.pnl !== data.current_pnl_pct) {
-                    animateValue(pnlEl, currentVals.pnl, data.current_pnl_pct, 1000, formatPct);
-                    pnlEl.className = 'widget-value ' + (data.current_pnl_pct > 0 ? 'pos' : (data.current_pnl_pct < 0 ? 'neg' : ''));
-                    currentVals.pnl = data.current_pnl_pct;
-                }
+                // Update Odometer values directly
+                odoTotal.update(data.total_capital);
+                odoAvail.update(data.available_capital);
+                odoInvest.update(data.invested_capital);
+                
+                const isPos = data.current_pnl_pct > 0;
+                const isNeg = data.current_pnl_pct < 0;
+                document.getElementById('pnl-sign').textContent = isPos ? '+' : (isNeg ? '-' : '');
+                document.getElementById('val-pnl-container').className = 'widget-value ' + (isPos ? 'pos' : (isNeg ? 'neg' : ''));
+                odoPnl.update(Math.abs(data.current_pnl_pct));
                 
                 // Update Table Smoothly
                 const tbody = document.querySelector('#table-positions tbody');
