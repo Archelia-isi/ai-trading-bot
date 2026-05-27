@@ -48,6 +48,20 @@ Rispondi ESATTAMENTE in questo formato JSON (nient'altro):
         
         logger.info(f"Decisione Gemini: {decision_data['decision']} su {epic}. Motivazione: {decision_data['reasoning']}")
         
+        # Invia messaggio alla Dashboard via Redis
+        pub_payload = {
+            "epic": epic,
+            "decision": decision_data['decision'],
+            "size_pct": decision_data['size_pct'],
+            "leverage": decision_data['leverage'],
+            "reasoning": decision_data['reasoning']
+        }
+        try:
+            r = await aioredis.from_url(REDIS_URL)
+            await r.publish("gemini_decisions", json.dumps(pub_payload))
+        except Exception as red_err:
+            logger.error(f"Errore pubblicazione Redis: {red_err}")
+            
         if decision_data['decision'] in ['BUY', 'SELL']:
             payload_to_audit = {
                 "epic": epic,

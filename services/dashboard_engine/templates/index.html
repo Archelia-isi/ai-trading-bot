@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mission Control | AI Hedge Fund</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0c10;
+            --panel-bg: rgba(31, 40, 51, 0.6);
+            --border-color: rgba(69, 162, 158, 0.3);
+            --text-main: #c5c6c7;
+            --text-highlight: #66fcf1;
+            --pos-color: #4CAF50;
+            --neg-color: #F44336;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(102, 252, 241, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(69, 162, 158, 0.05) 0%, transparent 50%);
+            color: var(--text-main);
+            min-height: 100vh;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: var(--text-highlight);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin: 0;
+            font-weight: 800;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background-color: var(--pos-color);
+            border-radius: 50%;
+            margin-left: 10px;
+            box-shadow: 0 0 10px var(--pos-color);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: 15px;
+            padding: 20px;
+            height: 60vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .panel-header {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        .panel-icon {
+            margin-right: 10px;
+            font-size: 1.5rem;
+        }
+
+        .feed-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding-right: 5px;
+        }
+
+        /* Scrollbar styling */
+        .feed-container::-webkit-scrollbar { width: 6px; }
+        .feed-container::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 10px;}
+        .feed-container::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px;}
+
+        /* Feed Cards */
+        .card {
+            background: rgba(0, 0, 0, 0.4);
+            border-left: 4px solid var(--text-highlight);
+            padding: 12px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            animation: slideIn 0.3s ease-out;
+            word-wrap: break-word;
+        }
+
+        .card.pos { border-left-color: var(--pos-color); }
+        .card.neg { border-left-color: var(--neg-color); }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.8rem;
+            opacity: 0.7;
+        }
+
+        .card-title {
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+
+        .badge {
+            background: rgba(255,255,255,0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .badge.buy { color: var(--pos-color); background: rgba(76, 175, 80, 0.1); }
+        .badge.sell { color: var(--neg-color); background: rgba(244, 67, 54, 0.1); }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Mission Control <span class="status-dot"></span></h1>
+        <p>Live AI Hedge Fund Monitoring</p>
+    </header>
+
+    <div class="grid-container">
+        <!-- Panel 1: NLP -->
+        <div class="panel">
+            <div class="panel-header"><span class="panel-icon">🕵️</span> Il Segugio (NLP)</div>
+            <div class="feed-container" id="feed-nlp">
+                <div class="card"><div class="card-title">In ascolto sui feed RSS mondiali...</div></div>
+            </div>
+        </div>
+
+        <!-- Panel 2: Math -->
+        <div class="panel">
+            <div class="panel-header"><span class="panel-icon">🧮</span> L'Analista (XGBoost)</div>
+            <div class="feed-container" id="feed-math">
+                <div class="card"><div class="card-title">Attesa di input e scansione tecnica...</div></div>
+            </div>
+        </div>
+
+        <!-- Panel 3: Gemini -->
+        <div class="panel">
+            <div class="panel-header"><span class="panel-icon">🧠</span> Il Manager (Gemini)</div>
+            <div class="feed-container" id="feed-gemini">
+                <div class="card"><div class="card-title">In attesa di alert...</div></div>
+            </div>
+        </div>
+
+        <!-- Panel 4: Audit -->
+        <div class="panel">
+            <div class="panel-header"><span class="panel-icon">🛡️</span> Il Guardiano (Audit)</div>
+            <div class="feed-container" id="feed-audit">
+                <div class="card"><div class="card-title">Protezione capitale attiva.</div></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Gestione WebSocket
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        
+        let ws;
+        
+        function connect() {
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                document.querySelector('.status-dot').style.backgroundColor = '#4CAF50';
+                console.log("WebSocket connected");
+            };
+
+            ws.onclose = () => {
+                document.querySelector('.status-dot').style.backgroundColor = '#F44336';
+                console.log("WebSocket disconnected. Retrying...");
+                setTimeout(connect, 3000);
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                handleMessage(msg.channel, msg.data);
+            };
+        }
+
+        function addCard(containerId, htmlContent, typeClass = '') {
+            const container = document.getElementById(containerId);
+            const card = document.createElement('div');
+            card.className = `card ${typeClass}`;
+            card.innerHTML = htmlContent;
+            
+            // Aggiungi in cima
+            container.insertBefore(card, container.firstChild);
+            
+            // Mantieni max 50 messaggi per colonna per non intasare la RAM
+            if (container.children.length > 50) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        function handleMessage(channel, data) {
+            const time = new Date().toLocaleTimeString();
+            
+            if (channel === 'news_alerts') {
+                const isPos = data.label === 'POSITIVE';
+                const cls = isPos ? 'pos' : 'neg';
+                const html = `
+                    <div class="card-header"><span>${time}</span> <span>Score: ${data.score.toFixed(2)}</span></div>
+                    <div class="card-title">${data.title}</div>
+                    <div><span class="badge ${isPos ? 'buy' : 'sell'}">${data.label}</span></div>
+                `;
+                addCard('feed-nlp', html, cls);
+            }
+            
+            else if (channel === 'portfolio_alerts') {
+                const isBuy = data.action_suggested === 'BUY';
+                const cls = isBuy ? 'pos' : 'neg';
+                const html = `
+                    <div class="card-header"><span>${time}</span> <span>${data.epic}</span></div>
+                    <div class="card-title">Target: ${data.epic}</div>
+                    <div>Prob. Rialzo: ${(data.xgboost_prob * 100).toFixed(2)}%</div>
+                    <div>Azione: <span class="badge ${isBuy ? 'buy' : 'sell'}">${data.action_suggested}</span></div>
+                `;
+                addCard('feed-math', html, cls);
+            }
+
+            else if (channel === 'gemini_decisions') {
+                const isBuy = data.decision === 'BUY';
+                const cls = data.decision === 'HOLD' ? '' : (isBuy ? 'pos' : 'neg');
+                const html = `
+                    <div class="card-header"><span>${time}</span> <span>${data.epic}</span></div>
+                    <div class="card-title">Decisione: <span class="badge ${data.decision.toLowerCase()}">${data.decision}</span></div>
+                    <div>Size: ${data.size_pct}% | Leva: ${data.leverage}</div>
+                    <div style="margin-top:5px; font-style:italic; opacity:0.8; font-size:0.8rem;">"${data.reasoning}"</div>
+                `;
+                addCard('feed-gemini', html, cls);
+            }
+
+            else if (channel === 'audit_actions') {
+                const isApproved = data.status === 'APPROVED';
+                const cls = isApproved ? 'pos' : 'neg';
+                const html = `
+                    <div class="card-header"><span>${time}</span> <span>${data.epic || 'SYSTEM'}</span></div>
+                    <div class="card-title">${data.action}</div>
+                    <div>Stato: <span class="badge ${isApproved ? 'buy' : 'sell'}">${data.status}</span></div>
+                    <div style="margin-top:5px; font-size:0.8rem;">${data.details}</div>
+                `;
+                addCard('feed-audit', html, cls);
+            }
+        }
+
+        // Avvia connessione
+        connect();
+    </script>
+</body>
+</html>

@@ -5,6 +5,19 @@ import logging
 import os
 import requests
 from typing import Optional
+import json
+import redis.asyncio as aioredis
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+
+async def publish_audit_action(epic: str, action: str, status: str, details: str):
+    try:
+        r = await aioredis.from_url(REDIS_URL)
+        await r.publish("audit_actions", json.dumps({
+            "epic": epic, "action": action, "status": status, "details": details
+        }))
+    except Exception as e:
+        logger.error(f"Errore Redis Publish Audit: {e}")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,6 +54,7 @@ async def audit_order(req: OrderRequest):
 
     if portfolio_state["is_trading_locked"] and not is_recovery_override:
         logger.warning("AUDIT REJECT: Trading bloccato per la giornata (Take Profit o Max Drawdown).")
+        await publish_audit_action(req.epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Trading Locked")
         return {"status": "rejected", "reason": "Trading Locked"}
         
     # Regola 1: Max Position Size (Taglio automatico al 10%)
@@ -57,10 +71,12 @@ async def audit_order(req: OrderRequest):
     current_exposure = sum(p['size'] for p in portfolio_state["open_positions"])
     if current_exposure + final_size > 50.0:
         logger.error(f"AUDIT REJECT: Superata esposizione massima del 50%. (Attuale: {current_exposure}%)")
+        await publish_audit_action(req.epic, f"{req.direction} {final_size}%", "REJECTED", f"Superata Esposizione Max 50% (Attuale {current_exposure}%)")
         return {"status": "rejected", "reason": "Max Exposure 50% Rule"}
         
     # Approvo l'ordine
     logger.info(f"✅ AUDIT APPROVE: Ordine validato! Esecuzione su Capital.com -> {req.epic} {req.direction} {final_size}% L{final_leverage}x")
+    await publish_audit_action(req.epic, f"{req.direction} {final_size}% L{final_leverage}x", "APPROVED", "Risk Checks Passed")
     
     # Mock salvataggio posizione
     portfolio_state["open_positions"].append({
@@ -91,12 +107,14 @@ async def risk_monitor_loop():
                 logger.info("🏆 OBIETTIVO GIORNALIERO +1% RAGGIUNTO! Chiusura globale e blocco trading.")
                 portfolio_state["open_positions"].clear() 
                 portfolio_state["is_trading_locked"] = True
+                await publish_audit_action("PORTFOLIO", "Chiusura Globale", "SYSTEM", "Obiettivo Giornaliero +1% Raggiunto!")
                 
             # HARD RULE: Flexible Drawdown -3%
             if portfolio_state["current_pnl_pct"] <= -3.0 and not portfolio_state["is_trading_locked"]:
                 logger.warning("🚨 MAX DRAWDOWN -3% RAGGIUNTO! Protezione capitale attivata. Chiusura globale.")
                 portfolio_state["open_positions"].clear()
                 portfolio_state["is_trading_locked"] = True
+                await publish_audit_action("PORTFOLIO", "Protezione Capitale", "SYSTEM", "Max Drawdown -3% Raggiunto. Chiusura Globale.")
                 
             # HARD RULE: Time Window Lock (Si attiva a 30 min dalla chiusura di Wall Street/Europa)
             # HARD RULE: Flash Crash Kill Switch e Dynamic ATR (Richiede interrogazione prezzi)
