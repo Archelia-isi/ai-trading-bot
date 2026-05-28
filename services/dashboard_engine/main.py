@@ -12,7 +12,7 @@ import redis.asyncio as aioredis
 
 # Aggiungi la root del progetto al path per importare core
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from core.database import Database
+from core.database import DatabaseManager
 
 class SettingRequest(BaseModel):
     key: str
@@ -26,7 +26,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-db = Database()
+db = DatabaseManager()
 
 # Lista di tutti i client WebSocket connessi
 connected_clients = set()
