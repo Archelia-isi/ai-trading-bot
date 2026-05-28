@@ -142,7 +142,7 @@ async def redis_listener():
                     is_open = is_market_open_locally(ticker)
                     
                     if not is_open:
-                        logger.info(f"🌙 Mercato CHIUSO per {ticker}. Parcheggio l'alert NLP grezzo nella Stanza d'Attesa per ri-valutazione all'apertura.")
+                        logger.info(f"🌙 Mercato CHIUSO per {ticker}. Parcheggio/Aggiorno l'alert NLP sulla Lavagna (Hash Map).")
                         raw_payload = {
                             "epic": ticker,
                             "title": data['title'],
@@ -150,7 +150,7 @@ async def redis_listener():
                             "score": data['score'],
                             "timestamp": time.time()
                         }
-                        await redis_client.rpush("waiting_room_alerts", json.dumps(raw_payload))
+                        await redis_client.hset("waiting_room_alerts", ticker, json.dumps(raw_payload))
                         continue
                         
                     try:
@@ -333,7 +333,7 @@ async def market_hunter_loop():
             await asyncio.sleep(60)
 
 async def waiting_room_loop():
-    logger.info("Avviata Stanza d'Attesa (Pre-Market Sniper)...")
+    logger.info("Avviata Lavagna d'Attesa (Pre-Market Sniper, Hash Map)...")
     global redis_client
     while True:
         try:
@@ -341,27 +341,29 @@ async def waiting_room_loop():
                 await asyncio.sleep(10)
                 continue
                 
-            length = await redis_client.llen("waiting_room_alerts")
+            length = await redis_client.hlen("waiting_room_alerts")
             if length > 0:
-                alerts = await redis_client.lrange("waiting_room_alerts", 0, -1)
-                await redis_client.delete("waiting_room_alerts")
+                alerts_dict = await redis_client.hgetall("waiting_room_alerts")
                 
                 current_time = time.time()
                 
-                for alert_bytes in alerts:
+                for ticker_bytes, alert_bytes in alerts_dict.items():
+                    ticker = ticker_bytes.decode('utf-8') if isinstance(ticker_bytes, bytes) else ticker_bytes
                     alert_data = json.loads(alert_bytes)
                     ts = alert_data.get('timestamp', current_time)
                     
                     if current_time - ts > (72 * 3600):
-                        logger.info(f"Notizia in attesa su {alert_data['epic']} scaduta (>72h). Scartata.")
+                        logger.info(f"Notizia in attesa su {ticker} scaduta (>72h). Scartata.")
+                        await redis_client.hdel("waiting_room_alerts", ticker)
                         continue
                         
-                    ticker = alert_data['epic']
-                    
                     if is_market_open_locally(ticker):
-                        logger.info(f"🔔 MERCATO APERTO per {ticker}! Ri-valutazione XGBoost della Notizia dalla Stanza d'Attesa in corso...")
+                        logger.info(f"🔔 MERCATO APERTO per {ticker}! Ri-valutazione XGBoost della Notizia dalla Lavagna in corso...")
                         
-                        # Recupero dati, retrocompatibilità con i vecchi alert
+                        # Rimuoviamo subito l'alert dalla lavagna per evitare doppie esecuzioni
+                        await redis_client.hdel("waiting_room_alerts", ticker)
+                        
+                        # Recupero dati
                         news_title = alert_data.get('title', alert_data.get('news_title', 'Notizia Sconosciuta'))
                         news_label = alert_data.get('label', alert_data.get('news_sentiment', 'NEUTRAL'))
                         news_score = alert_data.get('score', alert_data.get('news_score', 0.5))
@@ -421,9 +423,6 @@ async def waiting_room_loop():
                         except Exception as e:
                             logger.error(f"Errore ricalcolo Waiting Room per {ticker}: {e}")
                             
-                    else:
-                        await redis_client.rpush("waiting_room_alerts", json.dumps(alert_data))
-                        
         except Exception as e:
             logger.error(f"Errore Waiting Room Loop: {e}")
             
