@@ -11,7 +11,46 @@ import json
 import os
 import requests
 import numpy as np
+import yfinance as yf
 from capital_api import CapitalComAPI
+from datetime import datetime
+import pytz
+import time
+
+# --- CALENDARIO LOCALE ---
+def is_market_open_locally(epic: str) -> bool:
+    """Controlla se il mercato è aperto in base agli orari standard (UTC) per risparmiare chiamate API."""
+    try:
+        now = datetime.now(pytz.utc)
+        day = now.weekday() # 0 = Monday, 6 = Sunday
+        hour = now.hour
+        minute = now.minute
+        time_float = hour + minute / 60.0
+
+        # Crypto (Sempre aperte)
+        crypto = ["BTC-USD", "ETH-USD", "XRP-USD", "LTC-USD", "DOGE-USD", "BTCUSD", "ETHUSD", "XRPUSD", "LTCUSD", "DOGEUSD"]
+        if epic in crypto:
+            return True
+            
+        # Se è weekend, tutto il resto è chiuso
+        if day >= 5:
+            return False
+            
+        # US Stocks: 14:30 - 21:00 UTC (09:30 - 16:00 EST)
+        us_stocks = ["AAPL", "MSFT", "TSLA", "AMZN", "GOOGL", "NVDA", "META", "US30", "US100", "US500"]
+        if epic in us_stocks:
+            return 14.5 <= time_float < 21.0
+            
+        # EU/UK Stocks: 07:00 - 15:30 UTC (08:00 - 16:30 GMT)
+        eu_stocks = ["GER40", "UK100", "IT40"]
+        if epic in eu_stocks:
+            return 7.0 <= time_float < 15.5
+            
+        # Forex e Commodities: Aperte 24h dal Lunedì al Venerdì
+        return True
+    except Exception as e:
+        logger.error(f"Errore nel calcolo orari: {e}")
+        return True # Fallback
 
 api = CapitalComAPI()
 
@@ -94,72 +133,56 @@ async def redis_listener():
                     # 1. Recupero dati per l'asset incriminato (Mock: Usiamo Yahoo Finance API libera per semplicità nel microservizio isolato)
                     # In un sistema reale passiamo l'epic o scarichiamo da polygon/yahoo
                     import yfinance as yf
-                    # Ticker extraction ultra-basica
                     ticker = "AAPL" 
                     if "bitcoin" in data['title'].lower() or "btc" in data['title'].lower(): ticker = "BTC-USD"
                     elif "tesla" in data['title'].lower() or "musk" in data['title'].lower(): ticker = "TSLA"
                     
                     logger.info(f"Verifica Tecnica su {ticker} in corso...")
-                    
-                    if not api.is_market_open(ticker):
-                        logger.warning(f"Ricevuta notizia per {ticker} ma il mercato è CHIUSO. Ignoro l'alert.")
-                        continue
+                                   
+                    is_open = is_market_open_locally(ticker)
                     
                     try:
-                        # Usiamo la libreria locale di XGBoost
                         df_yf = yf.download(ticker, period="1y", interval="1d", progress=False)
-                        prices = []
-                        for date, row in df_yf.iterrows():
-                            # Se MultiIndex (yf recente) prendi il valore
-                            open_p = row['Open'].iloc[0] if isinstance(row['Open'], pd.Series) else row['Open']
-                            high_p = row['High'].iloc[0] if isinstance(row['High'], pd.Series) else row['High']
-                            low_p = row['Low'].iloc[0] if isinstance(row['Low'], pd.Series) else row['Low']
-                            close_p = row['Close'].iloc[0] if isinstance(row['Close'], pd.Series) else row['Close']
-                            vol_p = row['Volume'].iloc[0] if isinstance(row['Volume'], pd.Series) else row['Volume']
-                            prices.append({
-                                'openPrice': {'bid': float(open_p)},
-                                'highPrice': {'bid': float(high_p)},
-                                'lowPrice': {'bid': float(low_p)},
-                                'closePrice': {'bid': float(close_p)},
-                                'lastTradedVolume': float(vol_p)
-                            })
-                        prob = run_xgboost_on_prices(prices)
-                        
-                        logger.info(f"Conferma Tecnica XGBoost su {ticker}: {prob*100:.2f}% Prob. Rialzo")
-                        
-                        # Se NLP dice POSITIVE e Math dice >0.6 (o viceversa per lo Short) -> Allarme confermato!
-                        is_confirmed = False
-                        action_suggested = "HOLD"
-                        
-                        if data['label'] == 'POSITIVE' and prob > 0.6: 
-                            is_confirmed = True
-                            action_suggested = "BUY"
-                        if data['label'] == 'NEGATIVE' and prob < 0.4: 
-                            is_confirmed = True
-                            action_suggested = "SELL" # Short Selling!
+                        if len(df_yf) >= 50:
+                            prices = []
+                            for date, row in df_yf.iterrows():
+                                open_p = row['Open'].iloc[0] if isinstance(row['Open'], pd.Series) else row['Open']
+                                high_p = row['High'].iloc[0] if isinstance(row['High'], pd.Series) else row['High']
+                                low_p = row['Low'].iloc[0] if isinstance(row['Low'], pd.Series) else row['Low']
+                                close_p = row['Close'].iloc[0] if isinstance(row['Close'], pd.Series) else row['Close']
+                                vol_p = row['Volume'].iloc[0] if isinstance(row['Volume'], pd.Series) else row['Volume']
+                                prices.append({
+                                    'openPrice': {'bid': float(open_p)},
+                                    'highPrice': {'bid': float(high_p)},
+                                    'lowPrice': {'bid': float(low_p)},
+                                    'closePrice': {'bid': float(close_p)},
+                                    'lastTradedVolume': float(vol_p)
+                                })
+                            prob = run_xgboost_on_prices(prices)
+                        else:
+                            prob = 0.5
                             
-                        # Opportunità tecnica pura (Indipendentemente dalla news)
-                        if prob >= 0.65:
-                            is_confirmed = True
-                            action_suggested = "BUY"
-                        if prob <= 0.35:
-                            is_confirmed = True
-                            action_suggested = "SELL"
+                        action_suggested = "BUY" if prob > 0.65 else ("SELL" if prob < 0.35 else "HOLD")
                         
-                        if is_confirmed:
-                            alert_payload = {
-                                "epic": ticker,
-                                "news_title": data['title'],
-                                "news_sentiment": data['label'],
-                                "news_score": data['score'],
-                                "xgboost_prob": prob,
-                                "action_suggested": action_suggested
-                            }
-                            logger.info(f"🔥 SEGNALE CONFERMATO ({action_suggested})! Invio al Portfolio Manager: {alert_payload}")
-                            await redis_client.publish("portfolio_alerts", json.dumps(alert_payload))
+                        payload_for_gemini = {
+                            "epic": ticker,
+                            "news_title": f"Segugio: {data['title']} (Sentiment: {data['label']})",
+                            "news_sentiment": data['label'],
+                            "news_score": data['score'],
+                            "xgboost_prob": prob,
+                            "action_suggested": action_suggested
+                        }
+                        
+                        if is_open:
+                            logger.info(f"✅ Mercato APERTO per {ticker}. Invio diretto a Gemini per esecuzione.")
+                            await redis_client.publish("portfolio_alerts", json.dumps(payload_for_gemini))
+                        else:
+                            logger.info(f"🌙 Mercato CHIUSO per {ticker}. Parcheggio l'alert nella Stanza d'Attesa.")
+                            payload_for_gemini['timestamp'] = time.time()
+                            await redis_client.rpush("waiting_room_alerts", json.dumps(payload_for_gemini))
                             
                     except Exception as e:
-                        logger.error(f"Errore analisi yfinance: {e}")
+                        logger.error(f"Errore NLP Verification su XGBoost: {e}")
 
         except Exception as e:
             logger.error(f"Errore Listener Redis Math: {e}. Riconnessione tra 5s...")
@@ -244,35 +267,12 @@ async def market_hunter_loop():
                 
             for epic in mega_list:
                 try:
-                    # Salta direttamente se il mercato è chiuso
-                    if not api.is_market_open(epic):
-                        logger.info(f"Mercato chiuso per {epic}. Analisi saltata.")
-                        await asyncio.sleep(1) # breve pausa e passo al prossimo
+                    if not is_market_open_locally(epic):
+                        logger.info(f"Mercato chiuso per {epic}. Analisi saltata. Il cacciatore si sposta sul prossimo.")
+                        await asyncio.sleep(0.5)
                         continue
                         
                     prices = api.get_historical_prices(epic, hours=100)
-                        # Fallback su YFinance se non lo trova su Capital.com con questo nome
-                        import yfinance as yf
-                        df_yf = yf.download(epic, period="1y", interval="1d", progress=False)
-                        if len(df_yf) >= 50:
-                            prices = []
-                            for date, row in df_yf.iterrows():
-                                open_p = row['Open'].iloc[0] if isinstance(row['Open'], pd.Series) else row['Open']
-                                high_p = row['High'].iloc[0] if isinstance(row['High'], pd.Series) else row['High']
-                                low_p = row['Low'].iloc[0] if isinstance(row['Low'], pd.Series) else row['Low']
-                                close_p = row['Close'].iloc[0] if isinstance(row['Close'], pd.Series) else row['Close']
-                                vol_p = row['Volume'].iloc[0] if isinstance(row['Volume'], pd.Series) else row['Volume']
-                                prices.append({
-                                    'openPrice': {'bid': float(open_p)},
-                                    'highPrice': {'bid': float(high_p)},
-                                    'lowPrice': {'bid': float(low_p)},
-                                    'closePrice': {'bid': float(close_p)},
-                                    'lastTradedVolume': float(vol_p)
-                                })
-                        else:
-                            await asyncio.sleep(1) # rate limit
-                            continue
-                    
                     prob = run_xgboost_on_prices(prices)
                     
                     if prob >= 0.65:
@@ -301,14 +301,52 @@ async def market_hunter_loop():
                 except Exception as e:
                     pass
                 
-                await asyncio.sleep(10) # Pausa estesa tra un asset e l'altro per non superare il rate limit (15 RPM) di Gemini Free
+                await asyncio.sleep(10)
                 
-            # Finita la mega lista, aspetta 5 minuti
             await asyncio.sleep(300)
             
         except Exception as e:
             logger.error(f"Errore Cacciatore: {e}")
             await asyncio.sleep(60)
+
+async def waiting_room_loop():
+    logger.info("Avviata Stanza d'Attesa (Pre-Market Sniper)...")
+    global redis_client
+    while True:
+        try:
+            if not redis_client:
+                await asyncio.sleep(10)
+                continue
+                
+            length = await redis_client.llen("waiting_room_alerts")
+            if length > 0:
+                alerts = await redis_client.lrange("waiting_room_alerts", 0, -1)
+                await redis_client.delete("waiting_room_alerts")
+                
+                current_time = time.time()
+                
+                for alert_bytes in alerts:
+                    alert_data = json.loads(alert_bytes)
+                    ts = alert_data.get('timestamp', current_time)
+                    
+                    if current_time - ts > (72 * 3600):
+                        logger.info(f"Notizia in attesa su {alert_data['epic']} scaduta (>72h). Scartata.")
+                        continue
+                        
+                    ticker = alert_data['epic']
+                    
+                    if is_market_open_locally(ticker):
+                        logger.info(f"🔔 MERCATO APERTO per {ticker}! Sgancio l'alert a Gemini dalla Stanza d'Attesa!")
+                        if 'timestamp' in alert_data:
+                            del alert_data['timestamp']
+                        await redis_client.publish("portfolio_alerts", json.dumps(alert_data))
+                    else:
+                        await redis_client.rpush("waiting_room_alerts", json.dumps(alert_data))
+                        
+        except Exception as e:
+            logger.error(f"Errore Waiting Room Loop: {e}")
+            
+        await asyncio.sleep(60)
 
 @app.on_event("startup")
 async def startup_event():
@@ -316,9 +354,20 @@ async def startup_event():
     success = api.authenticate()
     if success:
         logger.info("🚀 API Capital.com Connessa per il Math Engine!")
+        
+    global redis_client
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    try:
+        redis_client = aioredis.from_url(redis_url)
+        logger.info("Connesso a Redis con successo!")
+    except Exception as e:
+        logger.error(f"Errore di connessione a Redis: {e}")
+        
+    logger.info("Avvio thread del Math Engine...")
     asyncio.create_task(redis_listener())
-    asyncio.create_task(portfolio_shield_loop())
     asyncio.create_task(market_hunter_loop())
+    asyncio.create_task(portfolio_shield_loop())
+    asyncio.create_task(waiting_room_loop())
 
 @app.post("/predict")
 def calculate_probability(request: PriceData):
