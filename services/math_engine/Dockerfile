@@ -8,5 +8,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Usiamo 4 worker Gunicorn
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT --workers 4
+# Usiamo 1 solo worker perché il multiprocessing è gestito internamente (24 vCPU partizionate)
+CMD uvicorn main:app --host 0.0.0.0 --port $PORT

@@ -9,5 +9,5 @@ RUN python -c "from transformers import pipeline; pipeline('sentiment-analysis',
 
 COPY . .
 
-# Usiamo 4 worker Gunicorn per sfruttare la CPU
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT --workers 4
+# Usiamo 1 solo worker perché l'asyncio gestisce i task internamente
+CMD uvicorn main:app --host 0.0.0.0 --port $PORT

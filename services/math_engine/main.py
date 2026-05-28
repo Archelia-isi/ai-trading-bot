@@ -9,6 +9,12 @@ import asyncio
 import redis.asyncio as aioredis
 import json
 import os
+# --- FIX LIMITI HARDWARE LINUX ---
+# Evita che XGBoost generi migliaia di thread (Resource temporarily unavailable)
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+
 import requests
 import numpy as np
 import yfinance as yf
@@ -159,23 +165,9 @@ async def redis_listener():
                         continue
                         
                     try:
-                        # I/O Bound
-                        df_yf = await asyncio.to_thread(yf.download, ticker, period="1y", interval="1d", progress=False)
-                        if len(df_yf) >= 50:
-                            prices = []
-                            for date, row in df_yf.iterrows():
-                                open_p = row['Open'].iloc[0] if isinstance(row['Open'], pd.Series) else row['Open']
-                                high_p = row['High'].iloc[0] if isinstance(row['High'], pd.Series) else row['High']
-                                low_p = row['Low'].iloc[0] if isinstance(row['Low'], pd.Series) else row['Low']
-                                close_p = row['Close'].iloc[0] if isinstance(row['Close'], pd.Series) else row['Close']
-                                vol_p = row['Volume'].iloc[0] if isinstance(row['Volume'], pd.Series) else row['Volume']
-                                prices.append({
-                                    'openPrice': {'bid': float(open_p)},
-                                    'highPrice': {'bid': float(high_p)},
-                                    'lowPrice': {'bid': float(low_p)},
-                                    'closePrice': {'bid': float(close_p)},
-                                    'lastTradedVolume': float(vol_p)
-                                })
+                        # I/O Bound - Usa direttamente Capital.com al posto di yfinance per evitare "database is locked" e problemi di Ticker come BTCUSD
+                        prices = await asyncio.to_thread(api.get_historical_prices, ticker, 100)
+                        if len(prices) >= 50:
                             # CPU Bound (Uso pool_segugio a 10 core)
                             loop = asyncio.get_event_loop()
                             prob = await loop.run_in_executor(pool_segugio, run_xgboost_on_prices, prices)
@@ -383,7 +375,17 @@ async def waiting_room_loop():
                 await asyncio.sleep(10)
                 continue
                 
-            length = await redis_client.hlen("waiting_room_alerts")
+            try:
+                length = await redis_client.hlen("waiting_room_alerts")
+            except Exception as e:
+                if "WRONGTYPE" in str(e):
+                    logger.warning("Rilevato WRONGTYPE su waiting_room_alerts. Resetto la chiave.")
+                    await redis_client.delete("waiting_room_alerts")
+                else:
+                    logger.error(f"Errore accesso Redis Lavagna: {e}")
+                await asyncio.sleep(5)
+                continue
+                
             if length > 0:
                 alerts_dict = await redis_client.hgetall("waiting_room_alerts")
                 
@@ -411,23 +413,9 @@ async def waiting_room_loop():
                         news_score = alert_data.get('score', alert_data.get('news_score', 0.5))
                         
                         try:
-                            # I/O Bound
-                            df_yf = await asyncio.to_thread(yf.download, ticker, period="1y", interval="1d", progress=False)
-                            if len(df_yf) >= 50:
-                                prices = []
-                                for date, row in df_yf.iterrows():
-                                    open_p = row['Open'].iloc[0] if isinstance(row['Open'], pd.Series) else row['Open']
-                                    high_p = row['High'].iloc[0] if isinstance(row['High'], pd.Series) else row['High']
-                                    low_p = row['Low'].iloc[0] if isinstance(row['Low'], pd.Series) else row['Low']
-                                    close_p = row['Close'].iloc[0] if isinstance(row['Close'], pd.Series) else row['Close']
-                                    vol_p = row['Volume'].iloc[0] if isinstance(row['Volume'], pd.Series) else row['Volume']
-                                    prices.append({
-                                        'openPrice': {'bid': float(open_p)},
-                                        'highPrice': {'bid': float(high_p)},
-                                        'lowPrice': {'bid': float(low_p)},
-                                        'closePrice': {'bid': float(close_p)},
-                                        'lastTradedVolume': float(vol_p)
-                                    })
+                            # I/O Bound - Usa Capital.com
+                            prices = await asyncio.to_thread(api.get_historical_prices, ticker, 100)
+                            if len(prices) >= 50:
                                 # CPU Bound (Uso pool_segugio a 10 core)
                                 loop = asyncio.get_event_loop()
                                 prob = await loop.run_in_executor(pool_segugio, run_xgboost_on_prices, prices)
