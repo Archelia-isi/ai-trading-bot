@@ -90,15 +90,17 @@ async def audit_order(req: OrderRequest):
         equity = margin_info.get("equity", 0.0)
         
         amount_to_invest = equity * (final_size / 100.0)
-        total_exposure = amount_to_invest * final_leverage
-        lot_size = (total_exposure / market_price) if market_price > 0 else 0.1
+        # BUG FIX: Ignoriamo la "leva" suggerita dall'AI per la grandezza del lotto.
+        # Il lotto si calcola ESATTAMENTE sul capitale investito desiderato (es. 10%).
+        lot_size = (amount_to_invest / market_price) if market_price > 0 else 0.1
         
-        logger.info(f"Capital.com: Calcolo Lotti -> Equity: {equity}, Investito: {amount_to_invest}, Leva: {final_leverage}, Prezzo: {market_price} = Size {lot_size} lotti")
+        logger.info(f"Capital.com: Calcolo Lotti -> Equity: {equity}, Investito: {amount_to_invest}, Prezzo: {market_price} = Size {lot_size} lotti")
         
         # CONTROLLO LOTTO MINIMO DEL BROKER (Evita che il broker forzi size enormi che mangiano il 50% del capitale)
         min_size = api.get_min_deal_size(req.epic)
         if lot_size < min_size:
-            required_margin_for_min_size = (min_size * market_price) / final_leverage if final_leverage > 0 else (min_size * market_price)
+            # Per sicurezza estrema, supponiamo che il broker dia leva 1x (margine 100%) quando valutiamo il rischio.
+            required_margin_for_min_size = (min_size * market_price)
             max_allowed_margin = equity * 0.12 # 12% massimo tollerato (10% + 2% di flessibilità)
             
             if required_margin_for_min_size > max_allowed_margin:
