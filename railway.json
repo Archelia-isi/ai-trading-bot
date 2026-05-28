@@ -4,6 +4,6 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "sh -c 'streamlit run app.py --server.port $PORT --server.address 0.0.0.0'"
+    "startCommand": "sh -c 'uvicorn services.dashboard_engine.main:app --host 0.0.0.0 --port $PORT'"
   }
 }
