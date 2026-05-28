@@ -120,7 +120,7 @@ async def audit_order(req: OrderRequest):
         equity = margin_info.get("equity", 0.0)
         
         amount_to_invest = equity * (final_size / 100.0)
-        lot_size = (amount_to_invest / market_price) if market_price > 0 else 0.1
+        lot_size = ((amount_to_invest * final_leverage) / market_price) if market_price > 0 else 0.1
         
         logger.info(f"Capital.com: Calcolo Lotti -> Equity: {equity}, Investito: {amount_to_invest}, Prezzo: {market_price} = Size {lot_size} lotti")
         
@@ -203,7 +203,13 @@ async def risk_monitor_loop():
                     epic = market.get('epic', 'UNKNOWN')
                     direction = pos.get('direction', 'BUY')
                     size_abs = pos.get('size', 0)
-                    leverage = market.get('leverage', 1)
+                    
+                    margin_factor = market.get('marginFactor')
+                    if margin_factor and float(margin_factor) > 0:
+                        leverage = int(round(1 / float(margin_factor)))
+                    else:
+                        leverage = market.get('leverage', 1)
+                        
                     upl = pos.get('upl', 0.0)
                     
                     # Calcolo approssimativo della % investita
