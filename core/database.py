@@ -76,13 +76,83 @@ class DatabaseManager:
                         volume FLOAT,
                         PRIMARY KEY (epic, timestamp)
                     );
+                    
+                    CREATE TABLE IF NOT EXISTS bot_settings (
+                        setting_key VARCHAR(50) PRIMARY KEY,
+                        setting_value TEXT NOT NULL
+                    );
                 """)
             conn.commit()
+            
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM bot_settings")
+                if cur.fetchone()[0] == 0:
+                    defaults = [
+                        ('scaglione_1_prob_long', '0.75'),
+                        ('scaglione_1_prob_short', '0.25'),
+                        ('scaglione_1_size_min', '0.5'),
+                        ('scaglione_1_size_max', '2.0'),
+                        ('scaglione_2_prob_long', '0.90'),
+                        ('scaglione_2_prob_short', '0.10'),
+                        ('scaglione_2_size_min', '3.0'),
+                        ('scaglione_2_size_max', '5.0'),
+                        ('scaglione_3_prob_long', '0.95'),
+                        ('scaglione_3_prob_short', '0.05'),
+                        ('scaglione_3_size_min', '8.0'),
+                        ('scaglione_3_size_max', '10.0'),
+                        ('max_exposure', '50.0'),
+                        ('max_leverage', '5'),
+                        ('max_drawdown', '-3.0'),
+                        ('daily_take_profit', '1.0'),
+                        ('recovery_mode_prob', '0.90'),
+                        ('hunter_long', '0.65'),
+                        ('hunter_short', '0.35'),
+                        ('segugio_long', '0.60'),
+                        ('segugio_short', '0.40'),
+                        ('xgboost_lambda', '10.0')
+                    ]
+                    cur.executemany("INSERT INTO bot_settings (setting_key, setting_value) VALUES (%s, %s)", defaults)
+                    conn.commit()
+                    logger.info("Impostazioni di default caricate nel database.")
             logger.info("Database inizializzato (tabelle verificate).")
         except Exception as e:
             logger.error(f"Errore durante l'inizializzazione del DB: {e}")
         finally:
             conn.close()
+
+    def get_settings(self) -> dict:
+        """Recupera tutte le impostazioni dal database."""
+        conn = self._get_connection()
+        if not conn:
+            return {}
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT setting_key, setting_value FROM bot_settings")
+                return {row[0]: row[1] for row in cur.fetchall()}
+        except Exception as e:
+            logger.error(f"Errore lettura settings dal DB: {e}")
+            return {}
+        finally:
+            conn.close()
+
+    def update_setting(self, key: str, value: str):
+        """Aggiorna o inserisce un'impostazione nel database."""
+        conn = self._get_connection()
+        if not conn:
+            return
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO bot_settings (setting_key, setting_value)
+                    VALUES (%s, %s)
+                    ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value
+                """, (key, str(value)))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Errore salvataggio setting {key} nel DB: {e}")
+        finally:
+            conn.close()
+
 
     def log_trade(self, asset: str, action: str, score: int, risk_profile: str, size: float, price: float, status: str = "OPEN"):
         """Salva un'operazione nel database serverless."""

@@ -69,9 +69,28 @@ async def audit_order(req: OrderRequest):
     else:
         real_epic = req.epic
 
-    # Eccezione "Recovery Mode": Se prob > 90%, ignora il blocco del drawdown -3%
+    # Lettura parametri dinamici da Redis
+    async def get_cfg(k, d):
+        try:
+            r = aioredis.from_url(REDIS_URL, decode_responses=True)
+            v = await r.get(f"config:{k}")
+            await r.close()
+            return float(v) if v is not None else d
+        except: return d
+
+    recovery_prob = await get_cfg("recovery_mode_prob", 0.90)
+    l3_prob_long = await get_cfg("scaglione_3_prob_long", 0.95)
+    l3_prob_short = await get_cfg("scaglione_3_prob_short", 0.05)
+    l2_prob_long = await get_cfg("scaglione_2_prob_long", 0.90)
+    l2_prob_short = await get_cfg("scaglione_2_prob_short", 0.10)
+    l2_size_max = await get_cfg("scaglione_2_size_max", 5.0)
+    l1_size_max = await get_cfg("scaglione_1_size_max", 2.0)
+    max_lev = await get_cfg("max_leverage", 5.0)
+    max_exp = await get_cfg("max_exposure", 50.0)
+
+    # Eccezione "Recovery Mode": ignora il blocco del drawdown
     is_recovery_override = False
-    if req.prob is not None and req.prob > 0.90:
+    if req.prob is not None and req.prob > recovery_prob:
         is_recovery_override = True
         logger.info(f"🔥 RECOVERY MODE OVERRIDE ATTIVO per {real_epic} (Prob {req.prob*100:.1f}%)")
 
@@ -81,33 +100,30 @@ async def audit_order(req: OrderRequest):
         return {"status": "rejected", "reason": "Trading Locked"}
         
     # Regola 0: Verifica Scaglioni (Position Sizing Dinamico)
-    if req.size_pct > 5.0:
-        if req.prob is None or not (req.prob > 0.95 or req.prob < 0.05):
+    if req.size_pct > l2_size_max:
+        if req.prob is None or not (req.prob >= l3_prob_long or req.prob <= l3_prob_short):
             logger.warning(f"AUDIT REJECT: Gemini ha chiesto {req.size_pct}% (Livello 3) ma le condizioni matematiche non lo giustificano (Prob: {req.prob}).")
             await publish_audit_action(real_epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 3 non autorizzato)")
             return {"status": "rejected", "reason": "Sizing Limit Exceeded"}
-    elif req.size_pct > 2.0:
-        if req.prob is None or not (req.prob > 0.90 or req.prob < 0.10):
+    elif req.size_pct > l1_size_max:
+        if req.prob is None or not (req.prob >= l2_prob_long or req.prob <= l2_prob_short):
             logger.warning(f"AUDIT REJECT: Gemini ha chiesto {req.size_pct}% (Livello 2) ma le condizioni matematiche non lo giustificano (Prob: {req.prob}).")
             await publish_audit_action(real_epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 2 non autorizzato)")
             return {"status": "rejected", "reason": "Sizing Limit Exceeded"}
 
-    # Regola 1: Max Position Size (Taglio automatico al 10%)
-    final_size = min(req.size_pct, 10.0)
-    if final_size < req.size_pct:
-        logger.warning(f"AUDIT WARN: Size ridotta da {req.size_pct}% al {final_size}% (Max 10% Rule)")
+    final_size = req.size_pct
         
-    # Regola 2: Max Leverage Cap (es. max 5x)
-    final_leverage = min(req.leverage, 5)
+    # Regola 2: Max Leverage Cap
+    final_leverage = min(req.leverage, int(max_lev))
     if final_leverage < req.leverage:
         logger.warning(f"AUDIT WARN: Leva ridotta da {req.leverage}x a {final_leverage}x (Max Cap Rule)")
         
-    # Regola 3: Esposizione Massima (50%)
+    # Regola 3: Esposizione Massima
     current_exposure = sum(p['size'] for p in portfolio_state["open_positions"])
-    if current_exposure + final_size > 50.0:
-        logger.error(f"AUDIT REJECT: Superata esposizione massima del 50%. (Attuale: {current_exposure}%)")
-        await publish_audit_action(real_epic, f"{req.direction} {final_size}%", "REJECTED", f"Superata Esposizione Max 50% (Attuale {current_exposure}%)")
-        return {"status": "rejected", "reason": "Max Exposure 50% Rule"}
+    if current_exposure + final_size > max_exp:
+        logger.error(f"AUDIT REJECT: Superata esposizione massima del {max_exp}%. (Attuale: {current_exposure}%)")
+        await publish_audit_action(real_epic, f"{req.direction} {final_size}%", "REJECTED", f"Superata Esposizione Max {max_exp}% (Attuale {current_exposure}%)")
+        return {"status": "rejected", "reason": "Max Exposure Rule"}
         
     # Approvo l'ordine
     logger.info(f"✅ AUDIT APPROVE: Ordine validato! Esecuzione su Capital.com -> {real_epic} {req.direction} {final_size}% L{final_leverage}x")
@@ -232,19 +248,30 @@ async def risk_monitor_loop():
                 # Mock PnL
                 portfolio_state["current_pnl_pct"] = sum(p['pnl_pct'] for p in portfolio_state["open_positions"])
             
-            # HARD RULE: Global Take Profit 1%
-            if portfolio_state["current_pnl_pct"] >= 1.0 and not portfolio_state["is_trading_locked"]:
-                logger.info("🏆 OBIETTIVO GIORNALIERO +1% RAGGIUNTO! Chiusura globale e blocco trading.")
+            async def get_cfg(k, d):
+                try:
+                    r = aioredis.from_url(REDIS_URL, decode_responses=True)
+                    v = await r.get(f"config:{k}")
+                    await r.close()
+                    return float(v) if v is not None else d
+                except: return d
+
+            daily_tp = await get_cfg("daily_take_profit", 1.0)
+            max_dd = await get_cfg("max_drawdown", -3.0)
+
+            # HARD RULE: Global Take Profit
+            if portfolio_state["current_pnl_pct"] >= daily_tp and not portfolio_state["is_trading_locked"]:
+                logger.info(f"🏆 OBIETTIVO GIORNALIERO +{daily_tp}% RAGGIUNTO! Chiusura globale e blocco trading.")
                 portfolio_state["open_positions"].clear() 
                 portfolio_state["is_trading_locked"] = True
-                await publish_audit_action("PORTFOLIO", "Chiusura Globale", "SYSTEM", "Obiettivo Giornaliero +1% Raggiunto!")
+                await publish_audit_action("PORTFOLIO", "Chiusura Globale", "SYSTEM", f"Obiettivo Giornaliero +{daily_tp}% Raggiunto!")
                 
-            # HARD RULE: Flexible Drawdown -3%
-            if portfolio_state["current_pnl_pct"] <= -3.0 and not portfolio_state["is_trading_locked"]:
-                logger.warning("🚨 MAX DRAWDOWN -3% RAGGIUNTO! Protezione capitale attivata. Chiusura globale.")
+            # HARD RULE: Flexible Drawdown
+            if portfolio_state["current_pnl_pct"] <= max_dd and not portfolio_state["is_trading_locked"]:
+                logger.warning(f"🚨 MAX DRAWDOWN {max_dd}% RAGGIUNTO! Protezione capitale attivata. Chiusura globale.")
                 portfolio_state["open_positions"].clear()
                 portfolio_state["is_trading_locked"] = True
-                await publish_audit_action("PORTFOLIO", "Protezione Capitale", "SYSTEM", "Max Drawdown -3% Raggiunto. Chiusura Globale.")
+                await publish_audit_action("PORTFOLIO", "Protezione Capitale", "SYSTEM", f"Max Drawdown {max_dd}% Raggiunto. Chiusura Globale.")
                 
             # HARD RULE: Time Window Lock (Si attiva a 30 min dalla chiusura di Wall Street/Europa)
             # HARD RULE: Flash Crash Kill Switch e Dynamic ATR (Richiede interrogazione prezzi)

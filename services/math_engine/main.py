@@ -101,7 +101,13 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df = df.fillna(method='ffill').fillna(method='bfill')
     return df.dropna()
 
-GLOBAL_XGBOOST_LAMBDA = 20.0
+GLOBAL_CONFIG = {
+    'xgboost_lambda': 10.0,
+    'hunter_long': 0.65,
+    'hunter_short': 0.35,
+    'segugio_long': 0.60,
+    'segugio_short': 0.40
+}
 
 def run_xgboost_on_prices(prices_data: list) -> float:
     try:
@@ -135,7 +141,7 @@ def run_xgboost_on_prices(prices_data: list) -> float:
             n_estimators=100, 
             max_depth=3, 
             learning_rate=0.05, 
-            reg_lambda=GLOBAL_XGBOOST_LAMBDA, 
+            reg_lambda=GLOBAL_CONFIG['xgboost_lambda'], 
             min_child_weight=5, 
             objective='binary:logistic', 
             random_state=42
@@ -201,7 +207,7 @@ async def redis_listener():
                         if data['label'] == 'POSITIVE' and prob > 0.7: 
                             is_confirmed = True
                             action_suggested = "BUY"
-                        if data['label'] == 'NEGATIVE' and prob < 0.3: 
+                        if data['label'] == 'NEGATIVE' and prob <= GLOBAL_CONFIG['segugio_short']: 
                             is_confirmed = True
                             action_suggested = "SELL"
                             
@@ -271,7 +277,7 @@ async def portfolio_shield_loop():
                         }
                         logger.warning(f"🛡️ SCUDO ATTIVO! Crollo rilevato su {epic}: Prob Rialzo {prob*100:.2f}%. Invio SELL_WARNING (Short/Chiusura).")
                         await redis_client.publish("portfolio_alerts", json.dumps(alert))
-                    elif prob >= 0.65:
+                    elif prob >= GLOBAL_CONFIG['hunter_long']:
                         action = "BUY"
                         alert = {
                             "epic": epic,
@@ -352,7 +358,7 @@ async def market_hunter_loop():
                     prob = res['prob']
                     epic = res['epic']
                     
-                    if prob >= 0.65:
+                    if prob >= GLOBAL_CONFIG['hunter_long']:
                         alert = {
                             "epic": epic,
                             "news_title": "Cacciatore: Occasione Tecnica Pura (LONG)",
@@ -364,7 +370,7 @@ async def market_hunter_loop():
                         logger.info(f"🏹 CACCIATORE: Trova LONG su {epic} (Prob {prob*100:.2f}%). Invio.")
                         await redis_client.publish("portfolio_alerts", json.dumps(alert))
                         
-                    elif prob <= 0.35:
+                    elif prob <= GLOBAL_CONFIG['hunter_short']:
                         alert = {
                             "epic": epic,
                             "news_title": "Cacciatore: Occasione Tecnica Pura (SHORT)",
@@ -445,14 +451,14 @@ async def waiting_room_loop():
                             action_suggested = "HOLD"
                             is_confirmed = False
                             
-                            if news_label == 'POSITIVE' and prob > 0.6: 
+                            if news_label == 'POSITIVE' and prob >= GLOBAL_CONFIG['segugio_long']: 
                                 is_confirmed = True
                                 action_suggested = "BUY"
                             if news_label == 'NEGATIVE' and prob < 0.4: 
                                 is_confirmed = True
                                 action_suggested = "SELL"
                                 
-                            if prob >= 0.65:
+                            if prob >= GLOBAL_CONFIG['hunter_long']:
                                 is_confirmed = True
                                 action_suggested = "BUY"
                             if prob <= 0.35:
@@ -481,17 +487,19 @@ async def waiting_room_loop():
             
         await asyncio.sleep(60)
 
-async def lambda_updater_loop():
-    global GLOBAL_XGBOOST_LAMBDA
+async def config_updater_loop():
+    global GLOBAL_CONFIG
     while True:
         try:
             if redis_client:
-                val = await redis_client.get("config:xgboost_lambda")
-                if val:
-                    GLOBAL_XGBOOST_LAMBDA = float(val)
+                keys = ['xgboost_lambda', 'hunter_long', 'hunter_short', 'segugio_long', 'segugio_short']
+                for key in keys:
+                    val = await redis_client.get(f"config:{key}")
+                    if val is not None:
+                        GLOBAL_CONFIG[key] = float(val)
         except Exception as e:
-            logger.error(f"Errore lettura lambda: {e}")
-        await asyncio.sleep(10)
+            logger.error(f"Errore lettura config da Redis: {e}")
+        await asyncio.sleep(5)
 
 @app.on_event("startup")
 async def startup_event():
@@ -513,7 +521,7 @@ async def startup_event():
     asyncio.create_task(market_hunter_loop())
     asyncio.create_task(portfolio_shield_loop())
     asyncio.create_task(waiting_room_loop())
-    asyncio.create_task(lambda_updater_loop())
+    asyncio.create_task(config_updater_loop())
 
 @app.post("/predict")
 def calculate_probability(request: PriceData):

@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import asyncio
 import logging
@@ -9,8 +10,13 @@ from fastapi.requests import Request
 from pydantic import BaseModel
 import redis.asyncio as aioredis
 
-class LambdaRequest(BaseModel):
-    lambda_value: float
+# Aggiungi la root del progetto al path per importare core
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from core.database import Database
+
+class SettingRequest(BaseModel):
+    key: str
+    value: str
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,6 +26,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+db = Database()
 
 # Lista di tutti i client WebSocket connessi
 connected_clients = set()
@@ -28,13 +35,43 @@ connected_clients = set()
 async def get_dashboard(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.post("/api/set_xgboost_lambda")
-async def set_xgboost_lambda(req: LambdaRequest):
-    logger.info(f"Ricevuta richiesta modifica XGBoost Lambda a {req.lambda_value}")
-    r = aioredis.from_url(REDIS_URL)
-    await r.set("config:xgboost_lambda", str(req.lambda_value))
-    await r.close()
-    return {"status": "success", "lambda_value": req.lambda_value}
+@app.get("/api/settings")
+async def get_settings():
+    """Recupera le impostazioni correnti da Redis."""
+    try:
+        r = aioredis.from_url(REDIS_URL, decode_responses=True)
+        keys = await r.keys("config:*")
+        settings = {}
+        if keys:
+            values = await r.mget(keys)
+            for k, v in zip(keys, values):
+                clean_key = k.replace("config:", "")
+                settings[clean_key] = v
+        await r.close()
+        return {"status": "success", "settings": settings}
+    except Exception as e:
+        logger.error(f"Errore lettura settings da Redis: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/settings")
+async def update_setting(req: SettingRequest):
+    """Aggiorna un'impostazione sia nel DB che in Redis."""
+    logger.info(f"Ricevuta richiesta modifica {req.key} a {req.value}")
+    try:
+        # 1. Salva su DB (Permanent Storage)
+        # Esegui in un thread separato dato che DB è sincrono
+        await asyncio.to_thread(db.update_setting, req.key, req.value)
+        
+        # 2. Salva su Redis (Fast Cache)
+        r = aioredis.from_url(REDIS_URL)
+        await r.set(f"config:{req.key}", str(req.value))
+        
+        # Invia la notifica via websocket (opzionale) o ricarica i settaggi
+        await r.close()
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Errore aggiornamento setting: {e}")
+        return {"status": "error", "message": str(e)}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -87,4 +124,19 @@ async def redis_listener():
 
 @app.on_event("startup")
 async def startup_event():
+    # 1. Carica DB in Redis
+    try:
+        settings = await asyncio.to_thread(db.get_settings)
+        if settings:
+            r = aioredis.from_url(REDIS_URL)
+            pipe = r.pipeline()
+            for k, v in settings.items():
+                pipe.set(f"config:{k}", str(v))
+            await pipe.execute()
+            await r.close()
+            logger.info(f"Caricate {len(settings)} impostazioni da DB a Redis.")
+    except Exception as e:
+        logger.error(f"Errore caricamento impostazioni iniziali: {e}")
+        
+    # 2. Avvia listener
     asyncio.create_task(redis_listener())
