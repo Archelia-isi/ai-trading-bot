@@ -152,7 +152,7 @@ async def redis_listener():
     global redis_client
     while True:
         try:
-            redis_client = await aioredis.from_url(redis_url)
+            redis_client = aioredis.from_url(redis_url)
             pubsub = redis_client.pubsub()
             await pubsub.subscribe("news_alerts")
             
