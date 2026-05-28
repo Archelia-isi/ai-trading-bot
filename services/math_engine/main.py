@@ -133,7 +133,7 @@ def run_xgboost_on_prices(prices_data: list) -> float:
             n_estimators=100, 
             max_depth=3, 
             learning_rate=0.05, 
-            reg_lambda=5.0, 
+            reg_lambda=20.0, 
             min_child_weight=5, 
             objective='binary:logistic', 
             random_state=42
