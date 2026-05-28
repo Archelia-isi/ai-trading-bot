@@ -95,6 +95,21 @@ async def audit_order(req: OrderRequest):
         
         logger.info(f"Capital.com: Calcolo Lotti -> Equity: {equity}, Investito: {amount_to_invest}, Leva: {final_leverage}, Prezzo: {market_price} = Size {lot_size} lotti")
         
+        # CONTROLLO LOTTO MINIMO DEL BROKER (Evita che il broker forzi size enormi che mangiano il 50% del capitale)
+        min_size = api.get_min_deal_size(req.epic)
+        if lot_size < min_size:
+            required_margin_for_min_size = (min_size * market_price) / final_leverage if final_leverage > 0 else (min_size * market_price)
+            max_allowed_margin = equity * 0.12 # 12% massimo tollerato (10% + 2% di flessibilità)
+            
+            if required_margin_for_min_size > max_allowed_margin:
+                msg = f"Il broker impone un lotto minimo di {min_size} che richiederebbe {required_margin_for_min_size:.2f}$ di margine. Questo supera il tuo limite di rischio (Max {max_allowed_margin:.2f}$). Ordine scartato."
+                logger.error(f"AUDIT REJECT: {msg}")
+                await publish_audit_action(req.epic, f"{req.direction}", "REJECTED", msg)
+                return {"status": "rejected", "reason": "Min Size Exceeds Risk Limit"}
+            else:
+                logger.warning(f"Size arrotondata al minimo del broker ({min_size} lotti). Margine richiesto: {required_margin_for_min_size:.2f}$")
+                lot_size = min_size
+                
         # Piazziamo fisicamente l'ordine
         res = api.place_order(req.epic, req.direction, lot_size)
         if res.get("status") != "success":
