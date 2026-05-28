@@ -3,11 +3,7 @@ import requests
 import logging
 from datetime import datetime
 import sys
-import os
-
-# Aggiungi root al path per poter importare core
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-from core.database import DatabaseManager
+from database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
