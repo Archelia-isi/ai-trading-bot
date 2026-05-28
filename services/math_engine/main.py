@@ -16,6 +16,10 @@ from capital_api import CapitalComAPI
 from datetime import datetime
 import pytz
 import time
+import concurrent.futures
+
+# Pool di Processi globale per sfruttare le 24 vCPU
+process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=24)
 
 # --- CALENDARIO LOCALE ---
 def is_market_open_locally(epic: str) -> bool:
@@ -130,13 +134,12 @@ async def redis_listener():
                     data = json.loads(message['data'])
                     logger.info(f"Ricevuta Notizia Bomba dal NLP: {data['title']} ({data['label']})")
                     
-                    # 1. Recupero dati per l'asset incriminato (Mock: Usiamo Yahoo Finance API libera per semplicità nel microservizio isolato)
-                    # In un sistema reale passiamo l'epic o scarichiamo da polygon/yahoo
-                    import yfinance as yf
-                    ticker = "AAPL" 
-                    if "bitcoin" in data['title'].lower() or "btc" in data['title'].lower(): ticker = "BTC-USD"
-                    elif "tesla" in data['title'].lower() or "musk" in data['title'].lower(): ticker = "TSLA"
-                    
+                    # Il Ticker ora viene estratto magicamente dal Segugio NLP (che usa la NER sull'intero web)
+                    ticker = data.get('epic')
+                    if not ticker:
+                        logger.warning(f"Il Segugio ha trovato la notizia '{data['title']}' ma non ha individuato nessun Ticker. Ignoro.")
+                        continue
+                        
                     logger.info(f"Verifica Tecnica su {ticker} in corso...")
                                    
                     is_open = is_market_open_locally(ticker)
@@ -270,17 +273,40 @@ async def portfolio_shield_loop():
             await asyncio.sleep(10)
 
 
+async def analyze_epic_async(epic: str):
+    """Funzione atomica per scaricare i dati e delegare l'elaborazione XGBoost ai 24 core"""
+    try:
+        if not is_market_open_locally(epic):
+            return None
+            
+        # I/O Bound: Scaricamento rete in thread separato per non bloccare l'asyncio
+        prices = await asyncio.to_thread(api.get_historical_prices, epic, 100)
+        if len(prices) < 50:
+            return None
+            
+        # CPU Bound: Delegato al ProcessPool a 24 Core per vera parallelizzazione
+        loop = asyncio.get_event_loop()
+        prob = await loop.run_in_executor(process_pool, run_xgboost_on_prices, prices)
+        
+        return {"epic": epic, "prob": prob}
+    except Exception as e:
+        return None
+
 async def market_hunter_loop():
-    logger.info("Avviato Cacciatore di Occasioni (Mega-Lista multi-direzionale)...")
+    logger.info("Avviato Cacciatore Multicore (24 vCPU - Smart Batching)...")
     global redis_client
     
-    mega_list = [
-        "AAPL", "MSFT", "TSLA", "AMZN", "GOOGL", "NVDA", "META", 
-        "BTCUSD", "ETHUSD", "XRPUSD", "LTCUSD", "DOGEUSD",
-        "GOLD", "SILVER", "OIL_BRENT", "NATURALGAS",
-        "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD",
-        "US30", "US100", "US500", "GER40", "UK100"
-    ]
+    # Caricamento del parco asset globale (S&P 500, Crypto, Forex, ecc.)
+    try:
+        with open('global_assets.json', 'r') as f:
+            mega_list = json.load(f)
+        logger.info(f"Cacciatore armato con {len(mega_list)} asset mondiali.")
+    except Exception:
+        logger.warning("global_assets.json non trovato, uso lista di fallback.")
+        mega_list = [
+            "AAPL", "MSFT", "TSLA", "AMZN", "GOOGL", "NVDA", "META", 
+            "BTCUSD", "ETHUSD", "XRPUSD", "LTCUSD", "DOGEUSD"
+        ]
     
     while True:
         try:
@@ -288,15 +314,22 @@ async def market_hunter_loop():
                 await asyncio.sleep(10)
                 continue
                 
-            for epic in mega_list:
-                try:
-                    if not is_market_open_locally(epic):
-                        logger.info(f"Mercato chiuso per {epic}. Analisi saltata. Il cacciatore si sposta sul prossimo.")
-                        await asyncio.sleep(0.5)
+            # --- SMART BATCHING ---
+            # Suddividiamo i 1000 asset in blocchi da 12 per evitare il Ban di Capital.com
+            chunk_size = 12
+            for i in range(0, len(mega_list), chunk_size):
+                chunk = mega_list[i:i+chunk_size]
+                
+                # Creiamo 12 task paralleli che sfrutteranno l'I/O asincrono e i 24 core per l'XGBoost
+                tasks = [analyze_epic_async(epic) for epic in chunk]
+                results = await asyncio.gather(*tasks)
+                
+                for res in results:
+                    if not res:
                         continue
                         
-                    prices = api.get_historical_prices(epic, hours=100)
-                    prob = run_xgboost_on_prices(prices)
+                    prob = res['prob']
+                    epic = res['epic']
                     
                     if prob >= 0.65:
                         alert = {
@@ -309,6 +342,7 @@ async def market_hunter_loop():
                         }
                         logger.info(f"🏹 CACCIATORE: Trova LONG su {epic} (Prob {prob*100:.2f}%). Invio.")
                         await redis_client.publish("portfolio_alerts", json.dumps(alert))
+                        
                     elif prob <= 0.35:
                         alert = {
                             "epic": epic,
@@ -320,12 +354,11 @@ async def market_hunter_loop():
                         }
                         logger.info(f"🏹 CACCIATORE: Trova SHORT su {epic} (Prob {prob*100:.2f}%). Invio.")
                         await redis_client.publish("portfolio_alerts", json.dumps(alert))
-                        
-                except Exception as e:
-                    pass
                 
-                await asyncio.sleep(10)
+                # Pausa Anti-Ban per respirare tra un blocco e l'altro
+                await asyncio.sleep(3)
                 
+            # Terminato l'intero giro dei 1000 asset, si riposa prima del prossimo ciclo
             await asyncio.sleep(300)
             
         except Exception as e:
