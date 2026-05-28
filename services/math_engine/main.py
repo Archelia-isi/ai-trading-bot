@@ -19,6 +19,7 @@ import requests
 import numpy as np
 import yfinance as yf
 from capital_api import CapitalComAPI
+from data_rotator import MultiProviderAPI
 from datetime import datetime
 import pytz
 import time
@@ -65,6 +66,7 @@ def is_market_open_locally(epic: str) -> bool:
         return True # Fallback
 
 api = CapitalComAPI()
+data_rotator = MultiProviderAPI(api)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -165,8 +167,8 @@ async def redis_listener():
                         continue
                         
                     try:
-                        # I/O Bound - Usa direttamente Capital.com al posto di yfinance per evitare "database is locked" e problemi di Ticker come BTCUSD
-                        prices = await asyncio.to_thread(api.get_historical_prices, ticker, 100)
+                        # I/O Bound - Usa direttamente il Rotator al posto di Capital.com
+                        prices = await asyncio.to_thread(data_rotator.get_historical_prices, ticker, 100)
                         if len(prices) >= 50:
                             # CPU Bound (Uso pool_segugio a 10 core)
                             loop = asyncio.get_event_loop()
@@ -230,8 +232,8 @@ async def portfolio_shield_loop():
             
             for epic in active_epics:
                 try:
-                    # I/O Bound
-                    prices = await asyncio.to_thread(api.get_historical_prices, epic, 100)
+                    # I/O Bound - Usa Rotator
+                    prices = await asyncio.to_thread(data_rotator.get_historical_prices, epic, 100)
                     if len(prices) < 50:
                         continue
                         
@@ -280,9 +282,9 @@ async def analyze_epic_async(epic: str):
         if not is_market_open_locally(epic):
             return None
             
-        # I/O Bound: Scaricamento rete in thread separato per non bloccare l'asyncio
-        prices = await asyncio.to_thread(api.get_historical_prices, epic, 100)
-        if len(prices) < 50:
+        # I/O Bound: Scaricamento rete via Rotator
+        prices = await asyncio.to_thread(data_rotator.get_historical_prices, epic, 100)
+        if not prices or len(prices) < 50:
             return None
             
         # CPU Bound: Delegato al ProcessPool a 13 Core del Cacciatore
@@ -316,7 +318,7 @@ async def market_hunter_loop():
                 continue
                 
             # --- SMART BATCHING ---
-            # Suddividiamo i 1000 asset in blocchi da 12 per evitare il Ban di Capital.com
+            # Suddividiamo i 1000 asset in blocchi da 12 per evitare il Ban
             chunk_size = 12
             for i in range(0, len(mega_list), chunk_size):
                 chunk = mega_list[i:i+chunk_size]
@@ -359,8 +361,8 @@ async def market_hunter_loop():
                 # Pausa Anti-Ban per respirare tra un blocco e l'altro
                 await asyncio.sleep(3)
                 
-            # Terminato l'intero giro dei 1000 asset, si riposa prima del prossimo ciclo
-            await asyncio.sleep(300)
+            # Pausa ridotta a 30 secondi grazie al Data Rotator multi-provider!
+            await asyncio.sleep(30)
             
         except Exception as e:
             logger.error(f"Errore Cacciatore: {e}")
