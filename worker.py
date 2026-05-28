@@ -54,7 +54,7 @@ Se l'azione suggerita è SELL, apri una posizione SHORT (decision: "SELL") per g
 DEVI APPLICARE RIGIDAMENTE QUESTO SISTEMA DI ALLOCAZIONE A SCAGLIONI:
 1. **Livello 1 - Ricognizione (Size tra 0.5% e 2.0%)**: Da usare per il 90% dei trade normali, quando la probabilità è tra il 75% e il 90% (o tra 10% e 25% per gli SHORT). Frammenta il rischio!
 2. **Livello 2 - Convinzione Forte (Size tra 3.0% e 5.0%)**: Da usare SOLO se la probabilità è > 90% (o < 10% per gli SHORT) E c'è una chiara conferma dalla notizia.
-3. **Livello 3 - La "Bomba" (Size tra 8.0% e 10.0%)**: Da usare SOLO ED ESCLUSIVAMENTE se la probabilità è ESTREMA (> 95% o < 7%) oppure se la notizia contiene esplicitamente la dicitura "Occasione Tecnica Pura".
+3. **Livello 3 - La "Bomba" (Size tra 8.0% e 10.0%)**: Da usare SOLO ED ESCLUSIVAMENTE se la probabilità è ESTREMA (> 95% o < 5%).
 
 Nella motivazione ("reasoning"), dichiara SEMPRE quale Scaglione hai scelto e perché.
 

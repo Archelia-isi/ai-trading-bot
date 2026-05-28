@@ -82,8 +82,7 @@ async def audit_order(req: OrderRequest):
         
     # Regola 0: Verifica Scaglioni (Position Sizing Dinamico)
     if req.size_pct > 5.0:
-        is_pure_tech = req.news and "Occasione Tecnica Pura" in req.news
-        if req.prob is None or not (req.prob > 0.95 or req.prob < 0.07 or is_pure_tech):
+        if req.prob is None or not (req.prob > 0.95 or req.prob < 0.05):
             logger.warning(f"AUDIT REJECT: Gemini ha chiesto {req.size_pct}% (Livello 3) ma le condizioni matematiche non lo giustificano (Prob: {req.prob}).")
             await publish_audit_action(real_epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 3 non autorizzato)")
             return {"status": "rejected", "reason": "Sizing Limit Exceeded"}
@@ -148,6 +147,15 @@ async def audit_order(req: OrderRequest):
         
         # Conferma UI
         await publish_audit_action(real_epic, f"BUY {lot_size} lotti" if req.direction == "BUY" else f"SELL {lot_size} lotti", "SYSTEM", "Ordine piazzato fisicamente su broker.")
+        
+        # Aggiornamento preventivo locale per evitare race condition sul Max 50% Exposure
+        portfolio_state["open_positions"].append({
+            "epic": real_epic,
+            "direction": req.direction,
+            "size": final_size,
+            "leverage": final_leverage,
+            "pnl_pct": 0.0
+        })
         
         return {
             "status": "approved",
