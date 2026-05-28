@@ -193,8 +193,7 @@ class CapitalComAPI:
             if size < min_size:
                 logger.warning(f"Size calcolata ({size}) inferiore al minimo del broker ({min_size}). Arrotondo al minimo se l'AI ha conviction!")
                 size = min_size
-                
-            api_dir = "BUY" if direction.upper() == "LONG" else "SELL"
+            api_dir = "BUY" if direction.upper() in ["LONG", "BUY"] else "SELL"
             
             payload = {
                 "epic": epic,
@@ -281,21 +280,6 @@ class CapitalComAPI:
         except Exception as e:
             logger.error(f"Errore recupero market hours per {epic}: {e}")
             return {}
-
-    def is_market_open(self, epic: str) -> bool:
-        """Verifica se il mercato è attualmente APERTO tramite il flag TRADEABLE."""
-        if not self.is_authenticated:
-            return True # Mock always open
-        try:
-            url = f"{self.base_url}/markets/{epic}"
-            response = requests.get(url, headers=self._get_headers(with_auth=True), timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                return data.get('marketState') == 'TRADEABLE'
-            return False
-        except Exception as e:
-            logger.error(f"Errore verifica stato mercato {epic}: {e}")
-            return False
 
     def is_market_closing_soon(self, epic: str, threshold_minutes: int = 15) -> bool:
         """Verifica se il mercato per l'epic specificato sta chiudendo entro i prossimi X minuti."""
