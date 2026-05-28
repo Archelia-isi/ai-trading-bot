@@ -107,15 +107,12 @@ async def portfolio_manager_loop():
     logger.info("Avviato Portfolio Manager Worker (Ascolto Allarmi Parallelo)...")
     
     try:
-        # Usiamo gemini-1.5-pro-latest per evitare l'errore 404 delle vecchie API
-        model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        # Il modello Pro restituisce 404 in fase di generateContent per limitazioni API.
+        # Passiamo direttamente a Flash che è fulmineo, universale e supporta l'output JSON nativo.
+        model = genai.GenerativeModel('gemini-1.5-flash')
     except Exception as e:
-        logger.error(f"Errore caricamento Gemini Pro: {e}")
-        try:
-            # Fallback
-            model = genai.GenerativeModel('gemini-1.5-flash')
-        except:
-            model = None
+        logger.error(f"Errore caricamento Gemini: {e}")
+        model = None
 
     while True:
         try:
