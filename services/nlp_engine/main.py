@@ -17,6 +17,10 @@ app = FastAPI(title="FinBERT NLP Microservice (Event-Driven)")
 nlp_pipeline = None
 redis_client = None
 
+# Stato Condiviso per i Loop
+active_portfolio_epics = set()
+global_pool_epics = []
+
 import re
 
 # Feed RSS Globali (Reddit, Google News, Yahoo)
@@ -140,29 +144,96 @@ async def scan_feed(feed_info, seen_articles):
     except Exception as e:
         logger.error(f"Errore nell'Agente Segugio {source_name}: {e}")
 
-async def news_scanner_loop():
-    logger.info("Avviato Segugio Globale Multicore (Reddit, Google News, Yahoo)...")
+# --- 1. RADAR WEB LIBERO (14 vCPU / Task) ---
+async def web_scanner_loop():
+    logger.info("Avviato Segugio Web Libero (14 task concorrenti)...")
     seen_articles = set()
+    semaphore = asyncio.Semaphore(14)
     
+    async def bounded_scan(feed):
+        async with semaphore:
+            await scan_feed(feed, seen_articles)
+            
     while True:
         if not nlp_pipeline or not redis_client:
             await asyncio.sleep(5)
             continue
-            
         try:
-            # Sguinzaglia molteplici "Agenti" in parallelo
-            tasks = [scan_feed(feed, seen_articles) for feed in RSS_FEEDS]
+            tasks = [bounded_scan(feed) for feed in RSS_FEEDS]
             await asyncio.gather(*tasks)
-            
         except Exception as e:
-            logger.error(f"Errore nel main loop del Segugio: {e}")
-            
-        # Pulisci cache per evitare memory leaks
-        if len(seen_articles) > 10000:
-            seen_articles.clear()
-            
-        # Pausa breve per reattività massima
+            pass
+        if len(seen_articles) > 10000: seen_articles.clear()
         await asyncio.sleep(30)
+
+# --- 2. SCUDO PORTAFOGLIO NLP (5 vCPU / Task) ---
+async def portfolio_scanner_loop():
+    logger.info("Avviato Segugio Portafoglio (5 task concorrenti)...")
+    seen_articles = set()
+    semaphore = asyncio.Semaphore(5)
+    
+    async def bounded_scan(epic):
+        async with semaphore:
+            feed_info = {"url": f"https://news.google.com/rss/search?q={epic}+stock+breaking+news", "name": f"GoogleNews Portfolio ({epic})"}
+            await scan_feed(feed_info, seen_articles)
+
+    while True:
+        if not nlp_pipeline or not redis_client or not active_portfolio_epics:
+            await asyncio.sleep(10)
+            continue
+        try:
+            tasks = [bounded_scan(epic) for epic in active_portfolio_epics]
+            await asyncio.gather(*tasks)
+        except Exception as e:
+            pass
+        if len(seen_articles) > 5000: seen_articles.clear()
+        await asyncio.sleep(45)
+
+# --- 3. CACCIATORE POOL NLP (5 vCPU / Task) ---
+async def pool_scanner_loop():
+    logger.info("Avviato Segugio Pool (5 task concorrenti)...")
+    seen_articles = set()
+    semaphore = asyncio.Semaphore(5)
+    
+    async def bounded_scan(epic):
+        async with semaphore:
+            feed_info = {"url": f"https://news.google.com/rss/search?q={epic}+stock+news", "name": f"GoogleNews Pool ({epic})"}
+            await scan_feed(feed_info, seen_articles)
+
+    while True:
+        if not nlp_pipeline or not redis_client or not global_pool_epics:
+            await asyncio.sleep(10)
+            continue
+        try:
+            # Batch di 5 asset alla volta per non inondare Google News
+            for i in range(0, len(global_pool_epics), 5):
+                chunk = global_pool_epics[i:i+5]
+                tasks = [bounded_scan(epic) for epic in chunk]
+                await asyncio.gather(*tasks)
+                await asyncio.sleep(2) # Anti-ban Google News
+        except Exception as e:
+            pass
+        if len(seen_articles) > 5000: seen_articles.clear()
+        await asyncio.sleep(120)
+
+# --- LISTENER REDIS PER LO STATO DEL PORTAFOGLIO ---
+async def portfolio_status_listener():
+    while True:
+        try:
+            if not redis_client:
+                await asyncio.sleep(5)
+                continue
+            pubsub = redis_client.pubsub()
+            await pubsub.subscribe("portfolio_status")
+            async for message in pubsub.listen():
+                if message['type'] == 'message':
+                    data = json.loads(message['data'])
+                    if 'open_positions' in data:
+                        active_portfolio_epics.clear()
+                        for pos in data['open_positions']:
+                            active_portfolio_epics.add(pos['epic'])
+        except Exception as e:
+            await asyncio.sleep(5)
 
 @app.on_event("startup")
 async def startup_event():
@@ -176,8 +247,22 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Errore caricamento modello: {e}")
         
-    # Avvia il loop in background
-    asyncio.create_task(news_scanner_loop())
+    # Carica la pool globale
+    global global_pool_epics
+    try:
+        pool_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "math_engine", "global_assets.json")
+        with open(pool_path, 'r') as f:
+            global_pool_epics = json.load(f)
+        logger.info(f"Segugio Pool caricato con {len(global_pool_epics)} asset.")
+    except Exception:
+        logger.warning("Impossibile caricare global_assets.json nel Segugio.")
+        global_pool_epics = ["AAPL", "MSFT", "TSLA"]
+
+    # Avvia i loop partizionati in background
+    asyncio.create_task(web_scanner_loop())
+    asyncio.create_task(portfolio_scanner_loop())
+    asyncio.create_task(pool_scanner_loop())
+    asyncio.create_task(portfolio_status_listener())
 
 @app.post("/analyze")
 def analyze_sentiment(request: TextRequest):

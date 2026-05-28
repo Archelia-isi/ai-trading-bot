@@ -18,8 +18,10 @@ import pytz
 import time
 import concurrent.futures
 
-# Pool di Processi globale per sfruttare le 24 vCPU
-process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=24)
+# --- PARTIZIONAMENTO RIGIDO 24 vCPU ---
+pool_shield = concurrent.futures.ProcessPoolExecutor(max_workers=1)
+pool_hunter = concurrent.futures.ProcessPoolExecutor(max_workers=13)
+pool_segugio = concurrent.futures.ProcessPoolExecutor(max_workers=10)
 
 # --- CALENDARIO LOCALE ---
 def is_market_open_locally(epic: str) -> bool:
@@ -157,7 +159,8 @@ async def redis_listener():
                         continue
                         
                     try:
-                        df_yf = yf.download(ticker, period="1y", interval="1d", progress=False)
+                        # I/O Bound
+                        df_yf = await asyncio.to_thread(yf.download, ticker, period="1y", interval="1d", progress=False)
                         if len(df_yf) >= 50:
                             prices = []
                             for date, row in df_yf.iterrows():
@@ -173,7 +176,9 @@ async def redis_listener():
                                     'closePrice': {'bid': float(close_p)},
                                     'lastTradedVolume': float(vol_p)
                                 })
-                            prob = run_xgboost_on_prices(prices)
+                            # CPU Bound (Uso pool_segugio a 10 core)
+                            loop = asyncio.get_event_loop()
+                            prob = await loop.run_in_executor(pool_segugio, run_xgboost_on_prices, prices)
                         else:
                             prob = 0.5
                             
@@ -223,7 +228,8 @@ async def portfolio_shield_loop():
                 await asyncio.sleep(10)
                 continue
                 
-            raw_positions = api.get_all_positions()
+            # I/O Bound
+            raw_positions = await asyncio.to_thread(api.get_all_positions)
             active_epics = set()
             for p in raw_positions:
                 market = p.get('market', {})
@@ -232,11 +238,14 @@ async def portfolio_shield_loop():
             
             for epic in active_epics:
                 try:
-                    prices = api.get_historical_prices(epic, hours=100)
+                    # I/O Bound
+                    prices = await asyncio.to_thread(api.get_historical_prices, epic, 100)
                     if len(prices) < 50:
                         continue
                         
-                    prob = run_xgboost_on_prices(prices)
+                    # CPU Bound (Uso pool_shield a 1 core fisso)
+                    loop = asyncio.get_event_loop()
+                    prob = await loop.run_in_executor(pool_shield, run_xgboost_on_prices, prices)
                     
                     if prob <= 0.35:
                         action = "SELL"
@@ -284,9 +293,9 @@ async def analyze_epic_async(epic: str):
         if len(prices) < 50:
             return None
             
-        # CPU Bound: Delegato al ProcessPool a 24 Core per vera parallelizzazione
+        # CPU Bound: Delegato al ProcessPool a 13 Core del Cacciatore
         loop = asyncio.get_event_loop()
-        prob = await loop.run_in_executor(process_pool, run_xgboost_on_prices, prices)
+        prob = await loop.run_in_executor(pool_hunter, run_xgboost_on_prices, prices)
         
         return {"epic": epic, "prob": prob}
     except Exception as e:
@@ -402,7 +411,8 @@ async def waiting_room_loop():
                         news_score = alert_data.get('score', alert_data.get('news_score', 0.5))
                         
                         try:
-                            df_yf = yf.download(ticker, period="1y", interval="1d", progress=False)
+                            # I/O Bound
+                            df_yf = await asyncio.to_thread(yf.download, ticker, period="1y", interval="1d", progress=False)
                             if len(df_yf) >= 50:
                                 prices = []
                                 for date, row in df_yf.iterrows():
@@ -418,7 +428,9 @@ async def waiting_room_loop():
                                         'closePrice': {'bid': float(close_p)},
                                         'lastTradedVolume': float(vol_p)
                                     })
-                                prob = run_xgboost_on_prices(prices)
+                                # CPU Bound (Uso pool_segugio a 10 core)
+                                loop = asyncio.get_event_loop()
+                                prob = await loop.run_in_executor(pool_segugio, run_xgboost_on_prices, prices)
                             else:
                                 prob = 0.5
                                 
