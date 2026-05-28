@@ -6,7 +6,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
+from pydantic import BaseModel
 import redis.asyncio as aioredis
+
+class LambdaRequest(BaseModel):
+    lambda_value: float
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,6 +27,14 @@ connected_clients = set()
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.post("/api/set_xgboost_lambda")
+async def set_xgboost_lambda(req: LambdaRequest):
+    logger.info(f"Ricevuta richiesta modifica XGBoost Lambda a {req.lambda_value}")
+    r = await aioredis.from_url(REDIS_URL)
+    await r.set("config:xgboost_lambda", str(req.lambda_value))
+    await r.close()
+    return {"status": "success", "lambda_value": req.lambda_value}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

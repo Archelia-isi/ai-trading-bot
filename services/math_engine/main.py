@@ -101,6 +101,8 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df = df.fillna(method='ffill').fillna(method='bfill')
     return df.dropna()
 
+GLOBAL_XGBOOST_LAMBDA = 20.0
+
 def run_xgboost_on_prices(prices_data: list) -> float:
     try:
         rows = []
@@ -133,7 +135,7 @@ def run_xgboost_on_prices(prices_data: list) -> float:
             n_estimators=100, 
             max_depth=3, 
             learning_rate=0.05, 
-            reg_lambda=20.0, 
+            reg_lambda=GLOBAL_XGBOOST_LAMBDA, 
             min_child_weight=5, 
             objective='binary:logistic', 
             random_state=42
@@ -479,6 +481,18 @@ async def waiting_room_loop():
             
         await asyncio.sleep(60)
 
+async def lambda_updater_loop():
+    global GLOBAL_XGBOOST_LAMBDA
+    while True:
+        try:
+            if redis_client:
+                val = await redis_client.get("config:xgboost_lambda")
+                if val:
+                    GLOBAL_XGBOOST_LAMBDA = float(val)
+        except Exception as e:
+            logger.error(f"Errore lettura lambda: {e}")
+        await asyncio.sleep(10)
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Connessione a Capital.com in corso per il Math Engine...")
@@ -499,6 +513,7 @@ async def startup_event():
     asyncio.create_task(market_hunter_loop())
     asyncio.create_task(portfolio_shield_loop())
     asyncio.create_task(waiting_room_loop())
+    asyncio.create_task(lambda_updater_loop())
 
 @app.post("/predict")
 def calculate_probability(request: PriceData):

@@ -282,7 +282,12 @@
 
         <!-- Panel 2: Math -->
         <div class="panel">
-            <div class="panel-header"><span class="panel-icon">🧮</span> L'Analista (XGBoost)</div>
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <span><span class="panel-icon">🧮</span> L'Analista (XGBoost)</span>
+                <select id="xgb-lambda-select" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: #fff; border-radius: 4px; padding: 2px 5px; font-size: 0.7rem; outline: none;" onchange="updateLambda(this.value)">
+                    <option value="" disabled selected>Rigidità...</option>
+                </select>
+            </div>
             <div class="feed-container" id="feed-math">
                 <div class="card"><div class="card-title">Attesa di input e scansione tecnica...</div></div>
             </div>
@@ -467,6 +472,28 @@
                         tbody.innerHTML = newHtml;
                     }
                 }
+            }
+        }
+
+        // Popola il selettore
+        const select = document.getElementById('xgb-lambda-select');
+        for (let i = 1; i <= 50; i++) {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = i;
+            if (i === 20) opt.selected = true; // Default visuale
+            select.appendChild(opt);
+        }
+
+        async function updateLambda(val) {
+            try {
+                await fetch('/api/set_xgboost_lambda', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ lambda_value: parseFloat(val) })
+                });
+            } catch (err) {
+                console.error("Errore aggiornamento lambda:", err);
             }
         }
 
