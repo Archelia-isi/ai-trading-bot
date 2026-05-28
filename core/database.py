@@ -213,3 +213,67 @@ class DatabaseManager:
             return []
         finally:
             conn.close()
+
+    def save_candles(self, epic: str, candles: list):
+        """Salva in bulk le candele storiche ignorando i duplicati."""
+        conn = self._get_connection()
+        if not conn or not candles: return
+        try:
+            with conn.cursor() as cur:
+                args = []
+                for c in candles:
+                    args.append((
+                        epic, 
+                        c['timestamp'], 
+                        c['openPrice']['bid'], 
+                        c['highPrice']['bid'], 
+                        c['lowPrice']['bid'], 
+                        c['closePrice']['bid'], 
+                        c['lastTradedVolume']
+                    ))
+                
+                query = """
+                    INSERT INTO market_candles (epic, timestamp, open, high, low, close, volume)
+                    VALUES %s
+                    ON CONFLICT (epic, timestamp) DO NOTHING
+                """
+                from psycopg2.extras import execute_values
+                execute_values(cur, query, args)
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Errore salvataggio candele per {epic}: {e}")
+        finally:
+            conn.close()
+
+    def get_candles(self, epic: str, limit: int = 1000) -> list:
+        """Recupera le ultime N candele dal Data Lake per l'epic, ordinate temporalmente dal più vecchio al più recente."""
+        conn = self._get_connection()
+        if not conn: return []
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT * FROM market_candles 
+                    WHERE epic = %s 
+                    ORDER BY timestamp DESC 
+                    LIMIT %s
+                """, (epic, limit))
+                rows = cur.fetchall()
+                # Reverse to get chronological order (oldest to newest)
+                rows = list(reversed(rows))
+                
+                result = []
+                for row in rows:
+                    result.append({
+                        "timestamp": row['timestamp'],
+                        "openPrice": {"bid": row['open']},
+                        "highPrice": {"bid": row['high']},
+                        "lowPrice": {"bid": row['low']},
+                        "closePrice": {"bid": row['close']},
+                        "lastTradedVolume": row['volume']
+                    })
+                return result
+        except Exception as e:
+            logger.error(f"Errore lettura candele per {epic}: {e}")
+            return []
+        finally:
+            conn.close()
