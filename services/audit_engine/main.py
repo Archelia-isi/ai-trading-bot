@@ -50,30 +50,47 @@ class OrderRequest(BaseModel):
 async def audit_order(req: OrderRequest):
     logger.info(f"Ricevuta richiesta ordine da Gemini su {req.epic}: {req.direction} | Size: {req.size_pct}% | Leva: {req.leverage}x")
     
+    # Epic Resolution Dinamica & Duplicate Check
+    if api.is_authenticated:
+        instrument = api.search_instrument(req.epic)
+        if not instrument:
+            logger.error(f"AUDIT REJECT: Strumento non trovato su Capital.com per {req.epic}")
+            await publish_audit_action(req.epic, f"{req.direction}", "REJECTED", "Strumento non trovato sul broker")
+            return {"status": "rejected", "reason": "Epic not found"}
+            
+        real_epic = instrument['epic']
+        
+        # Check Doppioni (Evitiamo di comprare/vendere 2 volte lo stesso asset)
+        for p in portfolio_state["open_positions"]:
+            if p['epic'] == real_epic:
+                logger.warning(f"AUDIT REJECT: Abbiamo già una posizione aperta su {real_epic}!")
+                await publish_audit_action(real_epic, f"{req.direction}", "REJECTED", "Asset già in portafoglio (No averaging up/down)")
+                return {"status": "rejected", "reason": "Duplicate Position"}
+    else:
+        real_epic = req.epic
+
     # Eccezione "Recovery Mode": Se prob > 90%, ignora il blocco del drawdown -3%
     is_recovery_override = False
     if req.prob is not None and req.prob > 0.90:
         is_recovery_override = True
-        logger.info(f"🔥 RECOVERY MODE OVERRIDE ATTIVO per {req.epic} (Prob {req.prob*100:.1f}%)")
+        logger.info(f"🔥 RECOVERY MODE OVERRIDE ATTIVO per {real_epic} (Prob {req.prob*100:.1f}%)")
 
     if portfolio_state["is_trading_locked"] and not is_recovery_override:
         logger.warning("AUDIT REJECT: Trading bloccato per la giornata (Take Profit o Max Drawdown).")
-        await publish_audit_action(req.epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Trading Locked")
+        await publish_audit_action(real_epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Trading Locked")
         return {"status": "rejected", "reason": "Trading Locked"}
         
     # Regola 0: Verifica Scaglioni (Position Sizing Dinamico)
     if req.size_pct > 5.0:
-        # Richiesta di Livello 3 (Bomba)
         is_pure_tech = req.news and "Occasione Tecnica Pura" in req.news
         if req.prob is None or not (req.prob > 0.95 or req.prob < 0.07 or is_pure_tech):
             logger.warning(f"AUDIT REJECT: Gemini ha chiesto {req.size_pct}% (Livello 3) ma le condizioni matematiche non lo giustificano (Prob: {req.prob}).")
-            await publish_audit_action(req.epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 3 non autorizzato)")
+            await publish_audit_action(real_epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 3 non autorizzato)")
             return {"status": "rejected", "reason": "Sizing Limit Exceeded"}
     elif req.size_pct > 2.0:
-        # Richiesta di Livello 2
         if req.prob is None or not (req.prob > 0.90 or req.prob < 0.10):
             logger.warning(f"AUDIT REJECT: Gemini ha chiesto {req.size_pct}% (Livello 2) ma le condizioni matematiche non lo giustificano (Prob: {req.prob}).")
-            await publish_audit_action(req.epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 2 non autorizzato)")
+            await publish_audit_action(real_epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 2 non autorizzato)")
             return {"status": "rejected", "reason": "Sizing Limit Exceeded"}
 
     # Regola 1: Max Position Size (Taglio automatico al 10%)
@@ -90,51 +107,53 @@ async def audit_order(req: OrderRequest):
     current_exposure = sum(p['size'] for p in portfolio_state["open_positions"])
     if current_exposure + final_size > 50.0:
         logger.error(f"AUDIT REJECT: Superata esposizione massima del 50%. (Attuale: {current_exposure}%)")
-        await publish_audit_action(req.epic, f"{req.direction} {final_size}%", "REJECTED", f"Superata Esposizione Max 50% (Attuale {current_exposure}%)")
+        await publish_audit_action(real_epic, f"{req.direction} {final_size}%", "REJECTED", f"Superata Esposizione Max 50% (Attuale {current_exposure}%)")
         return {"status": "rejected", "reason": "Max Exposure 50% Rule"}
         
     # Approvo l'ordine
-    logger.info(f"✅ AUDIT APPROVE: Ordine validato! Esecuzione su Capital.com -> {req.epic} {req.direction} {final_size}% L{final_leverage}x")
-    await publish_audit_action(req.epic, f"{req.direction} {final_size}% L{final_leverage}x", "APPROVED", "Risk Checks Passed")
+    logger.info(f"✅ AUDIT APPROVE: Ordine validato! Esecuzione su Capital.com -> {real_epic} {req.direction} {final_size}% L{final_leverage}x")
+    await publish_audit_action(real_epic, f"{req.direction} {final_size}% L{final_leverage}x", "APPROVED", "Risk Checks Passed")
     
     # ESECUZIONE REALE SU CAPITAL.COM
     if api.is_authenticated:
-        # Convertiamo la percentuale in lotti reali
-        market_price = api.get_market_price(req.epic)
+        market_price = api.get_market_price(real_epic)
         margin_info = api.get_margin_info()
         equity = margin_info.get("equity", 0.0)
         
         amount_to_invest = equity * (final_size / 100.0)
-        # BUG FIX: Ignoriamo la "leva" suggerita dall'AI per la grandezza del lotto.
-        # Il lotto si calcola ESATTAMENTE sul capitale investito desiderato (es. 10%).
         lot_size = (amount_to_invest / market_price) if market_price > 0 else 0.1
         
         logger.info(f"Capital.com: Calcolo Lotti -> Equity: {equity}, Investito: {amount_to_invest}, Prezzo: {market_price} = Size {lot_size} lotti")
         
-        # CONTROLLO LOTTO MINIMO DEL BROKER (Evita che il broker forzi size enormi che mangiano il 50% del capitale)
-        min_size = api.get_min_deal_size(req.epic)
+        min_size = api.get_min_deal_size(real_epic)
         if lot_size < min_size:
-            # Per sicurezza estrema, supponiamo che il broker dia leva 1x (margine 100%) quando valutiamo il rischio.
             required_margin_for_min_size = (min_size * market_price)
             max_allowed_margin = equity * 0.12 # 12% massimo tollerato (10% + 2% di flessibilità)
             
             if required_margin_for_min_size > max_allowed_margin:
                 msg = f"Il broker impone un lotto minimo di {min_size} che richiederebbe {required_margin_for_min_size:.2f}$ di margine. Questo supera il tuo limite di rischio (Max {max_allowed_margin:.2f}$). Ordine scartato."
                 logger.error(f"AUDIT REJECT: {msg}")
-                await publish_audit_action(req.epic, f"{req.direction}", "REJECTED", msg)
+                await publish_audit_action(real_epic, f"{req.direction}", "REJECTED", msg)
                 return {"status": "rejected", "reason": "Min Size Exceeds Risk Limit"}
             else:
                 logger.warning(f"Size arrotondata al minimo del broker ({min_size} lotti). Margine richiesto: {required_margin_for_min_size:.2f}$")
                 lot_size = min_size
                 
         # Piazziamo fisicamente l'ordine
-        res = api.place_order(req.epic, req.direction, lot_size)
+        res = api.place_order(real_epic, req.direction, lot_size)
         if res.get("status") != "success":
             logger.error(f"FALLIMENTO INVIO ORDINE CAPITAL.COM: {res}")
-            await publish_audit_action(req.epic, f"{req.direction} {lot_size} lotti", "REJECTED", f"Broker API Error: {res.get('message', 'Errore Sconosciuto')}")
+            await publish_audit_action(real_epic, f"{req.direction} {lot_size} lotti", "REJECTED", f"Broker API Error: {res.get('message', 'Errore Sconosciuto')}")
             return {"status": "error", "reason": "Broker API Error"}
-        else:
-            await publish_audit_action(req.epic, f"{req.direction} {lot_size} lotti", "SYSTEM", "Ordine piazzato fisicamente su broker.")
+        
+        # Conferma UI
+        await publish_audit_action(real_epic, f"BUY {lot_size} lotti" if req.direction == "BUY" else f"SELL {lot_size} lotti", "SYSTEM", "Ordine piazzato fisicamente su broker.")
+        
+        return {
+            "status": "approved",
+            "executed_size_pct": final_size,
+            "executed_leverage": final_leverage
+        }
     else:
         logger.warning("Capital.com non connesso. Esecuzione simulata (Mock).")
         # Mock salvataggio posizione
