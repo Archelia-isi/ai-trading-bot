@@ -109,7 +109,7 @@ async def portfolio_manager_loop():
     try:
         # Il modello Pro restituisce 404 in fase di generateContent per limitazioni API.
         # Passiamo direttamente a Flash che è fulmineo, universale e supporta l'output JSON nativo.
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-3.1-pro-preview')
     except Exception as e:
         logger.error(f"Errore caricamento Gemini: {e}")
         model = None
