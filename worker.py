@@ -93,15 +93,12 @@ Rispondi ESATTAMENTE in questo formato JSON (nient'altro):
             logger.info(f"Invio proposta di trade all'Auditor: {payload_to_audit}")
             
             try:
-                audit_resp = await asyncio.to_thread(
-                    requests.post, 
-                    f"{AUDIT_SERVICE_URL}/audit_order", 
-                    json=payload_to_audit,
-                    timeout=10
-                )
-                logger.info(f"Risposta Auditor: {audit_resp.json()}")
+                # Usa Redis al posto di HTTP per l'Auditor (resiliente su container separati)
+                r = await aioredis.from_url(REDIS_URL)
+                await r.publish("audit_requests", json.dumps(payload_to_audit))
+                logger.info("Messaggio inviato con successo ad Audit via Redis.")
             except Exception as req_err:
-                logger.error(f"Errore comunicazione con Auditor: {req_err}")
+                logger.error(f"Errore pubblicazione richiesta Audit via Redis: {req_err}")
             
     except Exception as e:
         logger.error(f"Errore durante l'interrogazione di Gemini su {epic}: {e}")

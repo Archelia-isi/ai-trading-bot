@@ -208,6 +208,28 @@ async def risk_monitor_loop():
             logger.error(f"Errore loop rischio: {e}")
             await asyncio.sleep(5)
 
+async def audit_listener_loop():
+    logger.info("Avviato Audit Redis Listener (Event-Driven)...")
+    while True:
+        try:
+            r = await aioredis.from_url(REDIS_URL)
+            pubsub = r.pubsub()
+            await pubsub.subscribe("audit_requests")
+            
+            logger.info("In ascolto sul canale 'audit_requests'...")
+            async for message in pubsub.listen():
+                if message['type'] == 'message':
+                    try:
+                        data = json.loads(message['data'])
+                        req = OrderRequest(**data)
+                        # Chiama la logica di audit
+                        await audit_order(req)
+                    except Exception as e:
+                        logger.error(f"Errore elaborazione audit_requests: {e}")
+        except Exception as e:
+            logger.error(f"Errore connessione Redis in Audit: {e}")
+            await asyncio.sleep(5)
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Connessione a Capital.com in corso...")
@@ -217,3 +239,4 @@ async def startup_event():
     else:
         logger.warning("⚠️ API Capital.com Fallita. Trading simulato attivo.")
     asyncio.create_task(risk_monitor_loop())
+    asyncio.create_task(audit_listener_loop())
