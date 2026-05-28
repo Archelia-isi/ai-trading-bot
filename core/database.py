@@ -42,9 +42,32 @@ class DatabaseManager:
                         price FLOAT,
                         status VARCHAR(20)
                     );
+                    
+                    CREATE TABLE IF NOT EXISTS trade_genesis (
+                        id SERIAL PRIMARY KEY,
+                        epic VARCHAR(50) NOT NULL,
+                        direction VARCHAR(10) NOT NULL,
+                        opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        closed_at TIMESTAMP,
+                        news_title TEXT,
+                        xgboost_prob FLOAT,
+                        gemini_reasoning TEXT,
+                        executed_size FLOAT,
+                        leverage INT,
+                        outcome_pnl FLOAT,
+                        is_evaluated BOOLEAN DEFAULT FALSE
+                    );
+                    
+                    CREATE TABLE IF NOT EXISTS ai_protocols (
+                        id SERIAL PRIMARY KEY,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        epic VARCHAR(50),
+                        protocol_text TEXT NOT NULL,
+                        is_active BOOLEAN DEFAULT TRUE
+                    );
                 """)
             conn.commit()
-            logger.info("Database inizializzato (tabella trade_logs verificata).")
+            logger.info("Database inizializzato (tabelle verificate).")
         except Exception as e:
             logger.error(f"Errore durante l'inizializzazione del DB: {e}")
         finally:
@@ -101,5 +124,81 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Errore durante lo svuotamento del DB: {e}")
             return False
+        finally:
+            conn.close()
+
+    # --- SUPERVISOR METHODS ---
+    
+    def log_trade_genesis(self, epic: str, direction: str, news_title: str, xgboost_prob: float, gemini_reasoning: str, executed_size: float, leverage: int):
+        conn = self._get_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO trade_genesis (epic, direction, news_title, xgboost_prob, gemini_reasoning, executed_size, leverage)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (epic, direction, news_title, xgboost_prob, gemini_reasoning, executed_size, leverage))
+            conn.commit()
+            logger.info(f"Genesi del trade {epic} salvata nel DB.")
+        except Exception as e:
+            logger.error(f"Errore salvataggio genesis: {e}")
+        finally:
+            conn.close()
+
+    def get_unevaluated_trades(self):
+        conn = self._get_connection()
+        if not conn: return []
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM trade_genesis WHERE is_evaluated = FALSE")
+                return cur.fetchall()
+        except Exception as e:
+            logger.error(f"Errore recupero trade non valutati: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def mark_trade_evaluated(self, trade_id: int, pnl: float):
+        conn = self._get_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE trade_genesis 
+                    SET is_evaluated = TRUE, outcome_pnl = %s, closed_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (pnl, trade_id))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Errore aggiornamento trade valutato: {e}")
+        finally:
+            conn.close()
+
+    def save_ai_protocol(self, protocol_text: str, epic: str = None):
+        conn = self._get_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO ai_protocols (epic, protocol_text)
+                    VALUES (%s, %s)
+                """, (epic, protocol_text))
+            conn.commit()
+            logger.info("Nuovo Protocollo AI salvato nel DB!")
+        except Exception as e:
+            logger.error(f"Errore salvataggio protocollo: {e}")
+        finally:
+            conn.close()
+
+    def get_active_protocols(self):
+        conn = self._get_connection()
+        if not conn: return []
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM ai_protocols WHERE is_active = TRUE ORDER BY created_at DESC")
+                return cur.fetchall()
+        except Exception as e:
+            logger.error(f"Errore recupero protocolli: {e}")
+            return []
         finally:
             conn.close()

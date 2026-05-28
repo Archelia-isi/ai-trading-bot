@@ -5,6 +5,7 @@ import os
 import logging
 import google.generativeai as genai
 import requests
+from core.database import DatabaseManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,6 +16,8 @@ AUDIT_SERVICE_URL = os.getenv("AUDIT_SERVICE_URL", "http://localhost:8002")
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
+
+db = DatabaseManager()
 
 async def process_alert(data, model):
     epic = data.get('epic')
@@ -28,6 +31,15 @@ async def process_alert(data, model):
         logger.error("Gemini non configurato, impossibile decidere.")
         return
         
+    # Estrai i protocolli attivi dal DB
+    active_protocols = db.get_active_protocols()
+    protocols_text = ""
+    if active_protocols:
+        for i, p in enumerate(active_protocols):
+            protocols_text += f"{i+1}. [Per {p['epic'] if p['epic'] else 'TUTTI'}]: {p['protocol_text']}\n"
+    else:
+        protocols_text = "Nessuna direttiva aggiuntiva al momento."
+        
     prompt = f"""
 Sei il Portfolio Manager di un Hedge Fund Quantitativo che opera con CFD.
 Hai il potere di andare LONG (comprare) o SHORT (vendere allo scoperto) su qualsiasi asset per trarre profitto sia dai rialzi che dai crolli.
@@ -39,6 +51,11 @@ Ultima notizia rilevante: "{news}"
 In base a questi dati, decidi se ESEGUIRE l'ordine, la SIZE (max 10% del capitale) e la LEVA (es. 1, 2, 5).
 Se l'azione suggerita è SELL e la notizia è negativa, apri una posizione SHORT (decision: "SELL") per guadagnare dal crollo.
 Se la notizia contiene "Occasione Tecnica Pura", significa che l'algoritmo ha individuato un pattern matematico fortissimo: in tal caso FIDATI dei numeri ed esegui sempre il trade (BUY o SELL) senza cercare conferme esterne!
+
+### DIRETTIVE DEL SUPERVISORE (REGOLE DI AUTO-APPRENDIMENTO)
+Il tuo supervisore ha analizzato i tuoi errori e successi passati e ti impone di rispettare assolutamente le seguenti regole aggiuntive:
+{protocols_text}
+
 Rispondi ESATTAMENTE in questo formato JSON (nient'altro):
 {{"decision": "BUY" | "SELL" | "HOLD", "size_pct": float, "leverage": int, "reasoning": "string"}}
     """
