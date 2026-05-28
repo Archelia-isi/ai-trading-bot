@@ -65,6 +65,17 @@ class DatabaseManager:
                         protocol_text TEXT NOT NULL,
                         is_active BOOLEAN DEFAULT TRUE
                     );
+                    
+                    CREATE TABLE IF NOT EXISTS market_candles (
+                        epic VARCHAR(50) NOT NULL,
+                        timestamp BIGINT NOT NULL,
+                        open FLOAT,
+                        high FLOAT,
+                        low FLOAT,
+                        close FLOAT,
+                        volume FLOAT,
+                        PRIMARY KEY (epic, timestamp)
+                    );
                 """)
             conn.commit()
             logger.info("Database inizializzato (tabelle verificate).")

@@ -23,15 +23,26 @@ temp_decisions = {}  # epic -> {reasoning}
 active_trades_pnl = {} # epic -> last known pnl
 
 async def generate_protocol(epic: str, direction: str, news: str, prob: float, reasoning: str, pnl: float):
-    """Genera un protocollo di apprendimento usando Gemini."""
+    """Genera un protocollo di apprendimento usando Gemini, integrando il contesto di mercato."""
     if not GEMINI_API_KEY:
         return
         
     outcome_str = "SUCCESSO (Profitto)" if pnl > 0 else "FALLIMENTO (Perdita)"
     
+    # Recupera il contesto di mercato dal Data Lake (Ultime 10 ore)
+    candles_context = ""
+    try:
+        last_candles = db.get_candles(epic, 10)
+        if last_candles:
+            candles_context = "\nContesto di Mercato (Ultime 10 candele orarie - Close, Vol):\n"
+            for i, c in enumerate(last_candles):
+                candles_context += f"T-{10-i}: Close={c['closePrice']['bid']:.4f}, Vol={c['lastTradedVolume']}\n"
+    except Exception as e:
+        logger.error(f"Errore nel recupero candele per {epic}: {e}")
+    
     prompt = f"""
-Sei il Supervisore Capo (Analista Esterno) di un Hedge Fund Quantitativo.
-Il tuo compito è analizzare le decisioni passate delle tue IA subordinate e creare regole ferree (Protocolli) per migliorare le performance future.
+Sei il Supervisore Capo (Analista Quantitativo Esterno) di un Hedge Fund.
+Il tuo compito è analizzare le decisioni passate delle tue IA subordinate e creare regole matematiche e tecniche ferree (Protocolli) per evitare errori futuri o consolidare successi.
 
 Dettagli del Trade Appena Chiuso:
 - Asset: {epic}
@@ -40,12 +51,12 @@ Dettagli del Trade Appena Chiuso:
 - Probabilità Calcolata (XGBoost): {prob*100:.2f}%
 - Ragionamento del Manager (Gemini): "{reasoning}"
 - ESITO FINALE: {outcome_str} ({pnl:.2f}%)
+{candles_context}
 
-Se l'esito è stato un SUCCESSO, scrivi una breve regola che incoraggi questo tipo di setup.
-Se l'esito è stato un FALLIMENTO, scrivi una regola correttiva CRITICA per evitare di ripetere questo errore.
-La tua risposta diventerà un pezzo del "System Prompt" del Manager per il futuro.
+Se l'esito è stato un SUCCESSO, scrivi una breve regola che incoraggi questo setup.
+Se l'esito è stato un FALLIMENTO, osserva le candele: se hai comprato su un picco, o in un trend ribassista, usa queste informazioni per scrivere una regola correttiva TECNICA e non solo basata sulle news. Esempio: "Su {epic}, non aprire posizioni LONG se le ultime 3 candele mostrano un trend discendente marcato."
 
-Rispondi SOLO con il testo della regola (massimo 2-3 frasi), senza commenti o saluti. Esempio: "Se la notizia riguarda l'energia ma la probabilità è sotto il 40%, dimezza la size."
+Rispondi SOLO con il testo della regola (massimo 2-3 frasi), senza commenti.
 """
     try:
         model = genai.GenerativeModel('gemini-3.1-pro-preview')
