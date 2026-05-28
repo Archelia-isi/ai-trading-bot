@@ -48,9 +48,15 @@ Azione suggerita dall'Algoritmo: {action} (BUY = Vai Long, SELL = Vai Short)
 Probabilità di successo (XGBoost): {prob*100:.2f}%
 Ultima notizia rilevante: "{news}"
 
-In base a questi dati, decidi se ESEGUIRE l'ordine, la SIZE (max 10% del capitale) e la LEVA (es. 1, 2, 5).
-Se l'azione suggerita è SELL e la notizia è negativa, apri una posizione SHORT (decision: "SELL") per guadagnare dal crollo.
-Se la notizia contiene "Occasione Tecnica Pura", significa che l'algoritmo ha individuato un pattern matematico fortissimo: in tal caso FIDATI dei numeri ed esegui sempre il trade (BUY o SELL) senza cercare conferme esterne!
+In base a questi dati, decidi se ESEGUIRE l'ordine, la SIZE e la LEVA (es. 1, 2, 5).
+Se l'azione suggerita è SELL, apri una posizione SHORT (decision: "SELL") per guadagnare dal crollo.
+
+DEVI APPLICARE RIGIDAMENTE QUESTO SISTEMA DI ALLOCAZIONE A SCAGLIONI:
+1. **Livello 1 - Ricognizione (Size tra 0.5% e 2.0%)**: Da usare per il 90% dei trade normali, quando la probabilità è tra il 75% e il 90% (o tra 10% e 25% per gli SHORT). Frammenta il rischio!
+2. **Livello 2 - Convinzione Forte (Size tra 3.0% e 5.0%)**: Da usare SOLO se la probabilità è > 90% (o < 10% per gli SHORT) E c'è una chiara conferma dalla notizia.
+3. **Livello 3 - La "Bomba" (Size tra 8.0% e 10.0%)**: Da usare SOLO ED ESCLUSIVAMENTE se la probabilità è ESTREMA (> 95% o < 7%) oppure se la notizia contiene esplicitamente la dicitura "Occasione Tecnica Pura".
+
+Nella motivazione ("reasoning"), dichiara SEMPRE quale Scaglione hai scelto e perché.
 
 ### DIRETTIVE DEL SUPERVISORE (REGOLE DI AUTO-APPRENDIMENTO)
 Il tuo supervisore ha analizzato i tuoi errori e successi passati e ti impone di rispettare assolutamente le seguenti regole aggiuntive:

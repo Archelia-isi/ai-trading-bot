@@ -61,6 +61,21 @@ async def audit_order(req: OrderRequest):
         await publish_audit_action(req.epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Trading Locked")
         return {"status": "rejected", "reason": "Trading Locked"}
         
+    # Regola 0: Verifica Scaglioni (Position Sizing Dinamico)
+    if req.size_pct > 5.0:
+        # Richiesta di Livello 3 (Bomba)
+        is_pure_tech = req.news and "Occasione Tecnica Pura" in req.news
+        if req.prob is None or not (req.prob > 0.95 or req.prob < 0.07 or is_pure_tech):
+            logger.warning(f"AUDIT REJECT: Gemini ha chiesto {req.size_pct}% (Livello 3) ma le condizioni matematiche non lo giustificano (Prob: {req.prob}).")
+            await publish_audit_action(req.epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 3 non autorizzato)")
+            return {"status": "rejected", "reason": "Sizing Limit Exceeded"}
+    elif req.size_pct > 2.0:
+        # Richiesta di Livello 2
+        if req.prob is None or not (req.prob > 0.90 or req.prob < 0.10):
+            logger.warning(f"AUDIT REJECT: Gemini ha chiesto {req.size_pct}% (Livello 2) ma le condizioni matematiche non lo giustificano (Prob: {req.prob}).")
+            await publish_audit_action(req.epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 2 non autorizzato)")
+            return {"status": "rejected", "reason": "Sizing Limit Exceeded"}
+
     # Regola 1: Max Position Size (Taglio automatico al 10%)
     final_size = min(req.size_pct, 10.0)
     if final_size < req.size_pct:

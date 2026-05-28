@@ -121,12 +121,20 @@ def run_xgboost_on_prices(prices_data: list) -> float:
         X = df[features][:-1]
         y = df['Target'][:-1]
         X_today = df[features].iloc[-1:]
+        
+        # Filtro di Volatilità (Trend Filter)
+        current_rsi = df['RSI'].iloc[-1]
+        if 45 <= current_rsi <= 55:
+            # Mercato in fase laterale piatta (Volume/Spinta assente). Scarta a prescindere.
+            return 0.5
+            
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
         model = xgb.XGBClassifier(n_estimators=100, max_depth=3, learning_rate=0.1, objective='binary:logistic', random_state=42)
         model.fit(X_train, y_train)
-        return float(model.predict_proba(X_today)[0][1])
+        prob = model.predict_proba(X_today)[0][1]
+        return float(prob)
     except Exception as e:
-        logger.error(f"Errore train XGBoost locale: {e}")
+        logger.error(f"Errore XGBoost: {e}")
         return 0.5
 
 async def redis_listener():
@@ -180,17 +188,17 @@ async def redis_listener():
                         is_confirmed = False
                         action_suggested = "HOLD"
                         
-                        if data['label'] == 'POSITIVE' and prob > 0.6: 
+                        if data['label'] == 'POSITIVE' and prob > 0.7: 
                             is_confirmed = True
                             action_suggested = "BUY"
-                        if data['label'] == 'NEGATIVE' and prob < 0.4: 
+                        if data['label'] == 'NEGATIVE' and prob < 0.3: 
                             is_confirmed = True
                             action_suggested = "SELL"
                             
-                        if prob >= 0.65:
+                        if prob >= 0.75:
                             is_confirmed = True
                             action_suggested = "BUY"
-                        if prob <= 0.35:
+                        if prob <= 0.25:
                             is_confirmed = True
                             action_suggested = "SELL"
                             
@@ -334,7 +342,7 @@ async def market_hunter_loop():
                     prob = res['prob']
                     epic = res['epic']
                     
-                    if prob >= 0.65:
+                    if prob >= 0.75:
                         alert = {
                             "epic": epic,
                             "news_title": "Cacciatore: Occasione Tecnica Pura (LONG)",
@@ -346,7 +354,7 @@ async def market_hunter_loop():
                         logger.info(f"🏹 CACCIATORE: Trova LONG su {epic} (Prob {prob*100:.2f}%). Invio.")
                         await redis_client.publish("portfolio_alerts", json.dumps(alert))
                         
-                    elif prob <= 0.35:
+                    elif prob <= 0.25:
                         alert = {
                             "epic": epic,
                             "news_title": "Cacciatore: Occasione Tecnica Pura (SHORT)",
