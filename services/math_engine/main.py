@@ -101,6 +101,10 @@ async def redis_listener():
                     
                     logger.info(f"Verifica Tecnica su {ticker} in corso...")
                     
+                    if not api.is_market_open(ticker):
+                        logger.warning(f"Ricevuta notizia per {ticker} ma il mercato è CHIUSO. Ignoro l'alert.")
+                        continue
+                    
                     try:
                         # Usiamo la libreria locale di XGBoost
                         df_yf = yf.download(ticker, period="1y", interval="1d", progress=False)
@@ -240,8 +244,13 @@ async def market_hunter_loop():
                 
             for epic in mega_list:
                 try:
+                    # Salta direttamente se il mercato è chiuso
+                    if not api.is_market_open(epic):
+                        logger.info(f"Mercato chiuso per {epic}. Analisi saltata.")
+                        await asyncio.sleep(1) # breve pausa e passo al prossimo
+                        continue
+                        
                     prices = api.get_historical_prices(epic, hours=100)
-                    if len(prices) < 50:
                         # Fallback su YFinance se non lo trova su Capital.com con questo nome
                         import yfinance as yf
                         df_yf = yf.download(epic, period="1y", interval="1d", progress=False)
