@@ -107,10 +107,15 @@ async def portfolio_manager_loop():
     logger.info("Avviato Portfolio Manager Worker (Ascolto Allarmi Parallelo)...")
     
     try:
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        # Usiamo gemini-1.5-pro-latest per evitare l'errore 404 delle vecchie API
+        model = genai.GenerativeModel('gemini-1.5-pro-latest')
     except Exception as e:
-        logger.error(f"Errore caricamento Gemini: {e}")
-        model = None
+        logger.error(f"Errore caricamento Gemini Pro: {e}")
+        try:
+            # Fallback
+            model = genai.GenerativeModel('gemini-1.5-flash')
+        except:
+            model = None
 
     while True:
         try:
