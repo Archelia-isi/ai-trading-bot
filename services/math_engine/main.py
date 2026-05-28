@@ -352,7 +352,7 @@ async def market_hunter_loop():
                     prob = res['prob']
                     epic = res['epic']
                     
-                    if prob >= 0.75:
+                    if prob >= 0.65:
                         alert = {
                             "epic": epic,
                             "news_title": "Cacciatore: Occasione Tecnica Pura (LONG)",
@@ -364,7 +364,7 @@ async def market_hunter_loop():
                         logger.info(f"🏹 CACCIATORE: Trova LONG su {epic} (Prob {prob*100:.2f}%). Invio.")
                         await redis_client.publish("portfolio_alerts", json.dumps(alert))
                         
-                    elif prob <= 0.25:
+                    elif prob <= 0.35:
                         alert = {
                             "epic": epic,
                             "news_title": "Cacciatore: Occasione Tecnica Pura (SHORT)",
