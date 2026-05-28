@@ -141,6 +141,18 @@ async def redis_listener():
                                    
                     is_open = is_market_open_locally(ticker)
                     
+                    if not is_open:
+                        logger.info(f"🌙 Mercato CHIUSO per {ticker}. Parcheggio l'alert NLP grezzo nella Stanza d'Attesa per ri-valutazione all'apertura.")
+                        raw_payload = {
+                            "epic": ticker,
+                            "title": data['title'],
+                            "label": data['label'],
+                            "score": data['score'],
+                            "timestamp": time.time()
+                        }
+                        await redis_client.rpush("waiting_room_alerts", json.dumps(raw_payload))
+                        continue
+                        
                     try:
                         df_yf = yf.download(ticker, period="1y", interval="1d", progress=False)
                         if len(df_yf) >= 50:
@@ -162,24 +174,35 @@ async def redis_listener():
                         else:
                             prob = 0.5
                             
-                        action_suggested = "BUY" if prob > 0.65 else ("SELL" if prob < 0.35 else "HOLD")
+                        # Logica di verifica incrociata
+                        is_confirmed = False
+                        action_suggested = "HOLD"
                         
-                        payload_for_gemini = {
-                            "epic": ticker,
-                            "news_title": f"Segugio: {data['title']} (Sentiment: {data['label']})",
-                            "news_sentiment": data['label'],
-                            "news_score": data['score'],
-                            "xgboost_prob": prob,
-                            "action_suggested": action_suggested
-                        }
-                        
-                        if is_open:
-                            logger.info(f"✅ Mercato APERTO per {ticker}. Invio diretto a Gemini per esecuzione.")
+                        if data['label'] == 'POSITIVE' and prob > 0.6: 
+                            is_confirmed = True
+                            action_suggested = "BUY"
+                        if data['label'] == 'NEGATIVE' and prob < 0.4: 
+                            is_confirmed = True
+                            action_suggested = "SELL"
+                            
+                        if prob >= 0.65:
+                            is_confirmed = True
+                            action_suggested = "BUY"
+                        if prob <= 0.35:
+                            is_confirmed = True
+                            action_suggested = "SELL"
+                            
+                        if is_confirmed:
+                            payload_for_gemini = {
+                                "epic": ticker,
+                                "news_title": f"Segugio: {data['title']} (Sentiment: {data['label']})",
+                                "news_sentiment": data['label'],
+                                "news_score": data['score'],
+                                "xgboost_prob": prob,
+                                "action_suggested": action_suggested
+                            }
+                            logger.info(f"✅ Mercato APERTO per {ticker}. Invio diretto a Gemini per esecuzione gap: {payload_for_gemini}")
                             await redis_client.publish("portfolio_alerts", json.dumps(payload_for_gemini))
-                        else:
-                            logger.info(f"🌙 Mercato CHIUSO per {ticker}. Parcheggio l'alert nella Stanza d'Attesa.")
-                            payload_for_gemini['timestamp'] = time.time()
-                            await redis_client.rpush("waiting_room_alerts", json.dumps(payload_for_gemini))
                             
                     except Exception as e:
                         logger.error(f"Errore NLP Verification su XGBoost: {e}")
@@ -336,10 +359,68 @@ async def waiting_room_loop():
                     ticker = alert_data['epic']
                     
                     if is_market_open_locally(ticker):
-                        logger.info(f"🔔 MERCATO APERTO per {ticker}! Sgancio l'alert a Gemini dalla Stanza d'Attesa!")
-                        if 'timestamp' in alert_data:
-                            del alert_data['timestamp']
-                        await redis_client.publish("portfolio_alerts", json.dumps(alert_data))
+                        logger.info(f"🔔 MERCATO APERTO per {ticker}! Ri-valutazione XGBoost della Notizia dalla Stanza d'Attesa in corso...")
+                        
+                        # Recupero dati, retrocompatibilità con i vecchi alert
+                        news_title = alert_data.get('title', alert_data.get('news_title', 'Notizia Sconosciuta'))
+                        news_label = alert_data.get('label', alert_data.get('news_sentiment', 'NEUTRAL'))
+                        news_score = alert_data.get('score', alert_data.get('news_score', 0.5))
+                        
+                        try:
+                            df_yf = yf.download(ticker, period="1y", interval="1d", progress=False)
+                            if len(df_yf) >= 50:
+                                prices = []
+                                for date, row in df_yf.iterrows():
+                                    open_p = row['Open'].iloc[0] if isinstance(row['Open'], pd.Series) else row['Open']
+                                    high_p = row['High'].iloc[0] if isinstance(row['High'], pd.Series) else row['High']
+                                    low_p = row['Low'].iloc[0] if isinstance(row['Low'], pd.Series) else row['Low']
+                                    close_p = row['Close'].iloc[0] if isinstance(row['Close'], pd.Series) else row['Close']
+                                    vol_p = row['Volume'].iloc[0] if isinstance(row['Volume'], pd.Series) else row['Volume']
+                                    prices.append({
+                                        'openPrice': {'bid': float(open_p)},
+                                        'highPrice': {'bid': float(high_p)},
+                                        'lowPrice': {'bid': float(low_p)},
+                                        'closePrice': {'bid': float(close_p)},
+                                        'lastTradedVolume': float(vol_p)
+                                    })
+                                prob = run_xgboost_on_prices(prices)
+                            else:
+                                prob = 0.5
+                                
+                            action_suggested = "HOLD"
+                            is_confirmed = False
+                            
+                            if news_label == 'POSITIVE' and prob > 0.6: 
+                                is_confirmed = True
+                                action_suggested = "BUY"
+                            if news_label == 'NEGATIVE' and prob < 0.4: 
+                                is_confirmed = True
+                                action_suggested = "SELL"
+                                
+                            if prob >= 0.65:
+                                is_confirmed = True
+                                action_suggested = "BUY"
+                            if prob <= 0.35:
+                                is_confirmed = True
+                                action_suggested = "SELL"
+                                
+                            if is_confirmed:
+                                final_payload = {
+                                    "epic": ticker,
+                                    "news_title": f"Segugio: {news_title} (Sentiment: {news_label})",
+                                    "news_sentiment": news_label,
+                                    "news_score": news_score,
+                                    "xgboost_prob": prob,
+                                    "action_suggested": action_suggested
+                                }
+                                logger.info(f"🚀 RI-VALUTAZIONE SUPERATA! Invio a Gemini per esecuzione gap: {final_payload}")
+                                await redis_client.publish("portfolio_alerts", json.dumps(final_payload))
+                            else:
+                                logger.warning(f"❌ Ri-valutazione fallita per {ticker}. La notizia non è più supportata dai prezzi attuali. Scartata.")
+                                
+                        except Exception as e:
+                            logger.error(f"Errore ricalcolo Waiting Room per {ticker}: {e}")
+                            
                     else:
                         await redis_client.rpush("waiting_room_alerts", json.dumps(alert_data))
                         
