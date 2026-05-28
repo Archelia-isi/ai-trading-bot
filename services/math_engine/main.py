@@ -176,7 +176,7 @@ async def redis_listener():
                         
                     try:
                         # I/O Bound - Usa direttamente il Rotator al posto di Capital.com
-                        prices = await asyncio.to_thread(data_rotator.get_historical_prices, ticker, 100)
+                        prices = await asyncio.to_thread(data_rotator.get_historical_prices, ticker, 5000)
                         if len(prices) >= 50:
                             # CPU Bound (Uso pool_segugio a 10 core)
                             loop = asyncio.get_event_loop()
@@ -291,7 +291,7 @@ async def analyze_epic_async(epic: str):
             return None
             
         # I/O Bound: Scaricamento rete via Rotator
-        prices = await asyncio.to_thread(data_rotator.get_historical_prices, epic, 100)
+        prices = await asyncio.to_thread(data_rotator.get_historical_prices, epic, 5000)
         if not prices or len(prices) < 50:
             return None
             
