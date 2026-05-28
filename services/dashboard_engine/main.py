@@ -31,7 +31,7 @@ async def get_dashboard(request: Request):
 @app.post("/api/set_xgboost_lambda")
 async def set_xgboost_lambda(req: LambdaRequest):
     logger.info(f"Ricevuta richiesta modifica XGBoost Lambda a {req.lambda_value}")
-    r = await aioredis.from_url(REDIS_URL)
+    r = aioredis.from_url(REDIS_URL)
     await r.set("config:xgboost_lambda", str(req.lambda_value))
     await r.close()
     return {"status": "success", "lambda_value": req.lambda_value}
@@ -52,7 +52,7 @@ async def websocket_endpoint(websocket: WebSocket):
 async def redis_listener():
     logger.info("Avviato Redis Listener per la Dashboard...")
     try:
-        r = await aioredis.from_url(REDIS_URL)
+        r = aioredis.from_url(REDIS_URL)
         pubsub = r.pubsub()
         # Iscrizione a tutti i canali vitali
         await pubsub.subscribe("news_alerts", "portfolio_alerts", "gemini_decisions", "audit_actions", "portfolio_status")
