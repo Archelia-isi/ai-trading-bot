@@ -13,7 +13,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 async def publish_audit_action(epic: str, action: str, status: str, details: str):
     try:
-        r = await aioredis.from_url(REDIS_URL)
+        r = aioredis.from_url(REDIS_URL)
         await r.publish("audit_actions", json.dumps({
             "epic": epic, "action": action, "status": status, "details": details
         }))
@@ -22,6 +22,8 @@ async def publish_audit_action(epic: str, action: str, status: str, details: str
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+background_tasks = set()
 
 app = FastAPI(title="Audit & Risk Management Engine")
 
@@ -289,7 +291,7 @@ async def risk_monitor_loop():
                 "open_positions": portfolio_state["open_positions"]
             }
             try:
-                r = await aioredis.from_url(REDIS_URL)
+                r = aioredis.from_url(REDIS_URL)
                 await r.publish("portfolio_status", json.dumps(status_payload))
             except Exception as e:
                 logger.error(f"Errore publish portfolio_status: {e}")
@@ -304,12 +306,12 @@ async def audit_listener_loop():
     logger.info("Avviato Audit Redis Listener (Event-Driven)...")
     while True:
         try:
-            r = await aioredis.from_url(REDIS_URL)
-            pubsub = r.pubsub()
-            await pubsub.subscribe("audit_requests")
-            
-            logger.info("In ascolto sul canale 'audit_requests'...")
-            async for message in pubsub.listen():
+            r = aioredis.from_url(REDIS_URL)
+            async with r.pubsub() as pubsub:
+                await pubsub.subscribe("audit_requests")
+                
+                logger.info("In ascolto sul canale 'audit_requests'...")
+                async for message in pubsub.listen():
                 if message['type'] == 'message':
                     try:
                         data = json.loads(message['data'])
@@ -330,5 +332,10 @@ async def startup_event():
         logger.info("🚀 API Capital.com Connessa! Trading LIVE attivo.")
     else:
         logger.warning("⚠️ API Capital.com Fallita. Trading simulato attivo.")
-    asyncio.create_task(risk_monitor_loop())
-    asyncio.create_task(audit_listener_loop())
+    task1 = asyncio.create_task(risk_monitor_loop())
+    background_tasks.add(task1)
+    task1.add_done_callback(background_tasks.discard)
+
+    task2 = asyncio.create_task(audit_listener_loop())
+    background_tasks.add(task2)
+    task2.add_done_callback(background_tasks.discard)

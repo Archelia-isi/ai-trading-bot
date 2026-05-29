@@ -21,6 +21,8 @@ class SettingRequest(BaseModel):
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+background_tasks = set()
+
 app = FastAPI(title="Mission Control Dashboard")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
@@ -139,4 +141,6 @@ async def startup_event():
         logger.error(f"Errore caricamento impostazioni iniziali: {e}")
         
     # 2. Avvia listener
-    asyncio.create_task(redis_listener())
+    task = asyncio.create_task(redis_listener())
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
