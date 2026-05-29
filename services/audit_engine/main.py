@@ -312,14 +312,14 @@ async def audit_listener_loop():
                 
                 logger.info("In ascolto sul canale 'audit_requests'...")
                 async for message in pubsub.listen():
-                if message['type'] == 'message':
-                    try:
-                        data = json.loads(message['data'])
-                        req = OrderRequest(**data)
-                        # Chiama la logica di audit
-                        await audit_order(req)
-                    except Exception as e:
-                        logger.error(f"Errore elaborazione audit_requests: {e}")
+                    if message['type'] == 'message':
+                        try:
+                            data = json.loads(message['data'])
+                            req = OrderRequest(**data)
+                            # Chiama la logica di audit
+                            await audit_order(req)
+                        except Exception as e:
+                            logger.error(f"Errore elaborazione audit_requests: {e}")
         except Exception as e:
             logger.error(f"Errore connessione Redis in Audit: {e}")
             await asyncio.sleep(5)
