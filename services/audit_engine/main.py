@@ -48,150 +48,122 @@ class OrderRequest(BaseModel):
     news: Optional[str] = None
     prob: Optional[float] = None
 
+# Cache dei segnali per il Voto Pesato
+signal_cache = {}
+from datetime import datetime, timedelta
+
 @app.post("/audit_order")
 async def audit_order(req: OrderRequest):
-    logger.info(f"Ricevuta richiesta ordine da Gemini su {req.epic}: {req.direction} | Size: {req.size_pct}% | Leva: {req.leverage}x")
+    logger.info(f"Ricevuta richiesta ordine da {req.source} su {req.epic}: {req.direction} | Size: {req.size_pct}%")
     
-    # Epic Resolution Dinamica & Duplicate Check
+    # Epic Resolution Dinamica
+    real_epic = req.epic
     if api.is_authenticated:
         instrument = api.search_instrument(req.epic)
-        if not instrument:
-            logger.error(f"AUDIT REJECT: Strumento non trovato su Capital.com per {req.epic}")
-            await publish_audit_action(req.epic, f"{req.direction}", "REJECTED", "Strumento non trovato sul broker")
-            return {"status": "rejected", "reason": "Epic not found"}
+        if instrument:
+            real_epic = instrument['epic']
             
-        real_epic = instrument['epic']
+    # --- 1. IL CONSIGLIO D'AMMINISTRAZIONE (VOTO PESATO) ---
+    now = datetime.now()
+    if real_epic not in signal_cache:
+        signal_cache[real_epic] = {}
         
-        # Check Doppioni (Evitiamo di comprare/vendere 2 volte lo stesso asset)
-        for p in portfolio_state["open_positions"]:
-            if p['epic'] == real_epic:
-                logger.warning(f"AUDIT REJECT: Abbiamo già una posizione aperta su {real_epic}!")
-                await publish_audit_action(real_epic, f"{req.direction}", "REJECTED", "Asset già in portafoglio (No averaging up/down)")
-                return {"status": "rejected", "reason": "Duplicate Position"}
-    else:
-        real_epic = req.epic
+    # Aggiorniamo la memoria del segnale
+    val = 1.0 if req.direction == "BUY" else (-1.0 if req.direction == "SELL" else 0.0)
+    signal_cache[real_epic][req.source] = {"val": val, "time": now, "size": req.size_pct}
+    
+    # Pulizia segnali vecchi (XGBoost/NLP scadono dopo 2 ore, Titano dopo 5 minuti)
+    active_votes = []
+    for src, data in list(signal_cache[real_epic].items()):
+        age_minutes = (now - data["time"]).total_seconds() / 60.0
+        if src == "TITANO_V4" and age_minutes > 5:
+            del signal_cache[real_epic][src]
+        elif age_minutes > 120:
+            del signal_cache[real_epic][src]
+        else:
+            active_votes.append(data["val"])
+            
+    if not active_votes:
+        return {"status": "pending", "reason": "No active votes"}
+        
+    # Calcolo Media Assoluta
+    mean_vote = sum(active_votes) / len(active_votes)
+    
+    final_direction = "FLAT"
+    if mean_vote >= 0.5: final_direction = "BUY"
+    elif mean_vote <= -0.5: final_direction = "SELL"
+    
+    if final_direction == "FLAT":
+        logger.info(f"CONSIGLIO D'AMMINISTRAZIONE: Voti discordanti su {real_epic} (Media: {mean_vote:.2f}). Nessuna azione.")
+        return {"status": "rejected", "reason": "Discordant Votes"}
+        
+    logger.info(f"⚖️ CONSIGLIO D'AMMINISTRAZIONE APPROVA: {final_direction} su {real_epic} (Media: {mean_vote:.2f})")
+    
+    # Check Doppioni
+    for p in portfolio_state["open_positions"]:
+        if p['epic'] == real_epic:
+            return {"status": "rejected", "reason": "Duplicate Position"}
 
-    # Lettura parametri dinamici da Redis
-    async def get_cfg(k, d):
-        try:
-            r = aioredis.from_url(REDIS_URL, decode_responses=True)
-            v = await r.get(f"config:{k}")
-            await r.close()
-            return float(v) if v is not None else d
-        except: return d
-
-    recovery_prob = await get_cfg("recovery_mode_prob", 0.90)
-    l3_prob_long = await get_cfg("scaglione_3_prob_long", 0.95)
-    l3_prob_short = await get_cfg("scaglione_3_prob_short", 0.05)
-    l2_prob_long = await get_cfg("scaglione_2_prob_long", 0.90)
-    l2_prob_short = await get_cfg("scaglione_2_prob_short", 0.10)
-    l2_size_max = await get_cfg("scaglione_2_size_max", 5.0)
-    l1_size_max = await get_cfg("scaglione_1_size_max", 2.0)
-    max_lev = await get_cfg("max_leverage", 5.0)
-    max_exp = await get_cfg("max_exposure", 50.0)
-
-    # Eccezione "Recovery Mode": ignora il blocco del drawdown
-    is_recovery_override = False
-    if req.prob is not None and req.prob > recovery_prob:
-        is_recovery_override = True
-        logger.info(f"🔥 RECOVERY MODE OVERRIDE ATTIVO per {real_epic} (Prob {req.prob*100:.1f}%)")
-
-    if portfolio_state["is_trading_locked"] and not is_recovery_override:
-        logger.warning("AUDIT REJECT: Trading bloccato per la giornata (Take Profit o Max Drawdown).")
-        await publish_audit_action(real_epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Trading Locked")
+    if portfolio_state["is_trading_locked"]:
         return {"status": "rejected", "reason": "Trading Locked"}
-        
-    # Regola 0: Verifica Scaglioni (Position Sizing Dinamico)
-    if req.size_pct > l2_size_max:
-        if req.prob is None or not (req.prob >= l3_prob_long or req.prob <= l3_prob_short):
-            logger.warning(f"AUDIT REJECT: Gemini ha chiesto {req.size_pct}% (Livello 3) ma le condizioni matematiche non lo giustificano (Prob: {req.prob}).")
-            await publish_audit_action(real_epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 3 non autorizzato)")
-            return {"status": "rejected", "reason": "Sizing Limit Exceeded"}
-    elif req.size_pct > l1_size_max:
-        if req.prob is None or not (req.prob >= l2_prob_long or req.prob <= l2_prob_short):
-            logger.warning(f"AUDIT REJECT: Gemini ha chiesto {req.size_pct}% (Livello 2) ma le condizioni matematiche non lo giustificano (Prob: {req.prob}).")
-            await publish_audit_action(real_epic, f"{req.direction} {req.size_pct}%", "REJECTED", "Sizing Limit Exceeded (Livello 2 non autorizzato)")
-            return {"status": "rejected", "reason": "Sizing Limit Exceeded"}
 
     final_size = req.size_pct
+    final_leverage = req.leverage
         
-    # Regola 2: Max Leverage Cap
-    final_leverage = min(req.leverage, int(max_lev))
-    if final_leverage < req.leverage:
-        logger.warning(f"AUDIT WARN: Leva ridotta da {req.leverage}x a {final_leverage}x (Max Cap Rule)")
-        
-    # Regola 3: Esposizione Massima
-    current_exposure = sum(p['size'] for p in portfolio_state["open_positions"])
-    if current_exposure + final_size > max_exp:
-        logger.error(f"AUDIT REJECT: Superata esposizione massima del {max_exp}%. (Attuale: {current_exposure}%)")
-        await publish_audit_action(real_epic, f"{req.direction} {final_size}%", "REJECTED", f"Superata Esposizione Max {max_exp}% (Attuale {current_exposure}%)")
-        return {"status": "rejected", "reason": "Max Exposure Rule"}
-        
-    # Approvo l'ordine
-    logger.info(f"✅ AUDIT APPROVE: Ordine validato! Esecuzione su Capital.com -> {real_epic} {req.direction} {final_size}% L{final_leverage}x")
-    await publish_audit_action(real_epic, f"{req.direction} {final_size}% L{final_leverage}x", "APPROVED", "Risk Checks Passed")
+    # --- 2. ARBITRAGGIO MULTI-BROKER (CAPITALE CONDIVISO) ---
+    market_price = api.get_market_price(real_epic)
+    equity = portfolio_state["total_capital"] if portfolio_state["total_capital"] > 0 else 10000.0
     
-    # ESECUZIONE REALE SU CAPITAL.COM
-    if api.is_authenticated:
-        market_price = api.get_market_price(real_epic)
-        margin_info = api.get_margin_info()
-        equity = margin_info.get("equity", 0.0)
-        
-        amount_to_invest = equity * (final_size / 100.0)
-        lot_size = ((amount_to_invest * final_leverage) / market_price) if market_price > 0 else 0.1
-        
-        logger.info(f"Capital.com: Calcolo Lotti -> Equity: {equity}, Investito: {amount_to_invest}, Prezzo: {market_price} = Size {lot_size} lotti")
-        
-        min_size = api.get_min_deal_size(real_epic)
-        if lot_size < min_size:
-            required_margin_for_min_size = (min_size * market_price)
-            max_allowed_margin = equity * 0.12 # 12% massimo tollerato (10% + 2% di flessibilità)
+    amount_to_invest = equity * (final_size / 100.0)
+    lot_size = ((amount_to_invest * final_leverage) / market_price) if market_price > 0 else 0.1
+    
+    if final_direction == "SELL":
+        # ESECUZIONE REALE SU CAPITAL.COM (SOLO SHORT)
+        if api.is_authenticated:
+            min_size = api.get_min_deal_size(real_epic)
+            lot_size = max(lot_size, min_size)
             
-            if required_margin_for_min_size > max_allowed_margin:
-                msg = f"Il broker impone un lotto minimo di {min_size} che richiederebbe {required_margin_for_min_size:.2f}$ di margine. Questo supera il tuo limite di rischio (Max {max_allowed_margin:.2f}$). Ordine scartato."
-                logger.error(f"AUDIT REJECT: {msg}")
-                await publish_audit_action(real_epic, f"{req.direction}", "REJECTED", msg)
-                return {"status": "rejected", "reason": "Min Size Exceeds Risk Limit"}
-            else:
-                logger.warning(f"Size arrotondata al minimo del broker ({min_size} lotti). Margine richiesto: {required_margin_for_min_size:.2f}$")
-                lot_size = min_size
+            logger.info(f"🔥 ARBITRAGGIO: SHORT inviato a CAPITAL.COM ({lot_size} lotti su {real_epic})")
+            res = api.place_order(real_epic, final_direction, lot_size)
+            
+            if res.get("status") != "success":
+                await publish_audit_action(real_epic, f"SELL {lot_size}", "REJECTED", f"Capital API Error: {res.get('message')}")
+                return {"status": "error", "reason": "Broker Error"}
                 
-        # Piazziamo fisicamente l'ordine
-        res = api.place_order(real_epic, req.direction, lot_size)
-        if res.get("status") != "success":
-            logger.error(f"FALLIMENTO INVIO ORDINE CAPITAL.COM: {res}")
-            await publish_audit_action(real_epic, f"{req.direction} {lot_size} lotti", "REJECTED", f"Broker API Error: {res.get('message', 'Errore Sconosciuto')}")
-            return {"status": "error", "reason": "Broker API Error"}
-        
-        # Conferma UI
-        await publish_audit_action(real_epic, f"BUY {lot_size} lotti" if req.direction == "BUY" else f"SELL {lot_size} lotti", "SYSTEM", "Ordine piazzato fisicamente su broker.")
-        
-        # Aggiornamento preventivo locale per evitare race condition sul Max 50% Exposure
-        portfolio_state["open_positions"].append({
-            "epic": real_epic,
-            "direction": req.direction,
-            "size": final_size,
-            "leverage": final_leverage,
-            "pnl_pct": 0.0
-        })
-        
-        return {
-            "status": "approved",
-            "executed_size_pct": final_size,
-            "executed_leverage": final_leverage
-        }
+            await publish_audit_action(real_epic, f"SELL {lot_size} L{final_leverage}x", "APPROVED", "Eseguito su Capital.com")
+        else:
+            logger.warning("Capital.com non connesso. MOCK SHORT.")
     else:
-        logger.warning("Capital.com non connesso. Esecuzione simulata (Mock).")
-        # Mock salvataggio posizione
-        portfolio_state["open_positions"].append({
-            "epic": req.epic,
-            "direction": req.direction,
-            "size": final_size,
-            "leverage": final_leverage,
-            "pnl_pct": 0.0
-        })
+        # ESECUZIONE SIMULATA SU BINANCE (SOLO LONG)
+        logger.info(f"🟢 ARBITRAGGIO: LONG simulato su BINANCE PAPER TRADING ({lot_size} lotti su {real_epic})")
+        # Applichiamo una finta fee dello 0.1% come su Binance reale per rendere il mock realistico
+        fee_usd = amount_to_invest * 0.001
+        portfolio_state["total_capital"] -= fee_usd # Detrazione capitale condiviso
+        
+        await publish_audit_action(real_epic, f"BUY {lot_size} L{final_leverage}x", "APPROVED", f"Simulato su Binance (Fee: {fee_usd:.2f}$)")
+
+    # Aggiornamento Portafoglio
+    portfolio_state["open_positions"].append({
+        "epic": real_epic,
+        "direction": final_direction,
+        "size": final_size,
+        "leverage": final_leverage,
+        "pnl_pct": 0.0
+    })
     
-    # TODO: Logga la decisione finale di Gemini e dell'Auditor sul Database Centrale per l'auto-apprendimento
+    # Notifichiamo il Supervisore per il Cross-Pollination
+    try:
+        r = aioredis.from_url(REDIS_URL)
+        await r.publish("supervisor_trade_genesis", json.dumps({
+            "epic": real_epic,
+            "direction": final_direction,
+            "source": req.source,
+            "votes_mean": mean_vote,
+            "size": final_size,
+            "price": market_price
+        }))
+    except:
+        pass
     
     return {
         "status": "approved",

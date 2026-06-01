@@ -109,12 +109,12 @@ class CapitalComAPI:
         except:
             return {"equity": 0.0, "available": 0.0}
 
-    def get_historical_prices(self, epic: str, hours: int = 24) -> list:
-        """Recupera le ultime N candele orarie per l'analisi quantitativa dell'AI."""
+    def get_historical_prices(self, epic: str, max_candles: int = 30, resolution: str = "MINUTE") -> list:
+        """Recupera le ultime N candele per l'analisi quantitativa dell'AI."""
         if not self.is_authenticated:
             return []
         try:
-            url = f"{self.base_url}/prices/{epic}?resolution=HOUR&max={hours}"
+            url = f"{self.base_url}/prices/{epic}?resolution={resolution}&max={max_candles}"
             response = requests.get(url, headers=self._get_headers(with_auth=True), timeout=10)
             if response.status_code == 200:
                 return response.json().get('prices', [])

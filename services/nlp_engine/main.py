@@ -119,28 +119,46 @@ async def scan_feed(feed_info, seen_articles):
                 # Il Segugio ignora le notizie dove non individua chiaramente l'azienda
                 continue
                 
-            # 3. Sentiment Analysis FinBERT (Usa in automatico la potenza multicore di PyTorch)
-            results = nlp_pipeline(title)
-            if len(results) > 0:
+            # 3. Sentiment Analysis Dinamica
+            crypto_epics = ["BTCUSD", "ETHUSD", "XRPUSD", "DOGEUSD", "SOLUSD"]
+            
+            if epic in crypto_epics and cryptobert_pipeline:
+                # Usa CryptoBERT per le criptovalute
+                results = cryptobert_pipeline(title)
                 res = results[0]
+                label = res['label'].upper() # Bullish, Bearish, Neutral
                 score = res['score']
-                label = res['label'].upper()
                 
-                # Soglia di confidenza al 75% per evitare rumore
-                if score >= 0.75 and label != "NEUTRAL":
-                    logger.info(f"[{source_name}] 🚨 BOMBA SU {epic}: {title} [{label} {score}]")
-                    
-                    payload = {
-                        "epic": epic,
-                        "title": title,
-                        "label": label,
-                        "score": float(score),
-                        "link": entry.link,
-                        "source": source_name
-                    }
-                    
-                    redis_client.publish("news_alerts", json.dumps(payload))
-                    
+                # Mappatura etichette CryptoBERT a standard
+                if label == "BULLISH": label = "POSITIVE"
+                elif label == "BEARISH": label = "NEGATIVE"
+                
+            else:
+                # Usa FinBERT per Stocks e Forex
+                results = nlp_pipeline(title)
+                res = results[0]
+                label = res['label'].upper()
+                score = res['score']
+                
+            # Soglia di confidenza al 75% per evitare rumore
+            if score >= 0.75 and label != "NEUTRAL":
+                logger.info(f"[{source_name}] 🚨 BOMBA SU {epic}: {title} [{label} {score}]")
+                
+                direction = "BUY" if label == "POSITIVE" else "SELL"
+                
+                payload = {
+                    "epic": epic,
+                    "direction": direction,
+                    "size_pct": 2.0, # Dimensione minore per i trade NLP puri
+                    "leverage": 1,
+                    "prob": float(score),
+                    "source": "NLP_ENGINE",
+                    "title": title
+                }
+                
+                # Invia direttamente all'Audit Engine come richiesta
+                redis_client.publish("audit_requests", json.dumps(payload))
+                
     except Exception as e:
         logger.error(f"Errore nell'Agente Segugio {source_name}: {e}")
 
@@ -237,15 +255,23 @@ async def portfolio_status_listener():
 
 @app.on_event("startup")
 async def startup_event():
-    global nlp_pipeline
+    global nlp_pipeline, cryptobert_pipeline
     init_redis()
-    logger.info("Avvio caricamento FinBERT in RAM...")
+    logger.info("Avvio caricamento FinBERT e CryptoBERT in RAM...")
     try:
         device = 0 if torch.cuda.is_available() else -1
         nlp_pipeline = pipeline("sentiment-analysis", model="ProsusAI/finbert", device=device)
-        logger.info("FinBERT caricato con successo e pronto.")
+        logger.info("FinBERT caricato con successo.")
+        
+        # Carichiamo CryptoBERT
+        from transformers import TextClassificationPipeline, AutoModelForSequenceClassification, AutoTokenizer
+        crypto_model_name = "ElKulako/cryptobert"
+        crypto_tokenizer = AutoTokenizer.from_pretrained(crypto_model_name, use_fast=True)
+        crypto_model = AutoModelForSequenceClassification.from_pretrained(crypto_model_name)
+        cryptobert_pipeline = TextClassificationPipeline(model=crypto_model, tokenizer=crypto_tokenizer, device=device)
+        logger.info("CryptoBERT caricato con successo.")
     except Exception as e:
-        logger.error(f"Errore caricamento modello: {e}")
+        logger.error(f"Errore caricamento modelli NLP: {e}")
         
     # Carica la pool globale
     global global_pool_epics
@@ -256,7 +282,7 @@ async def startup_event():
         logger.info(f"Segugio Pool caricato con {len(global_pool_epics)} asset.")
     except Exception:
         logger.warning("Impossibile caricare global_assets.json nel Segugio.")
-        global_pool_epics = ["AAPL", "MSFT", "TSLA"]
+        global_pool_epics = ["AAPL", "MSFT", "TSLA", "BTCUSD", "ETHUSD"]
 
     # Avvia i loop partizionati in background
     asyncio.create_task(web_scanner_loop())

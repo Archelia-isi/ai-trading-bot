@@ -22,73 +22,14 @@ temp_signals = {}    # epic -> {news, prob}
 temp_decisions = {}  # epic -> {reasoning}
 active_trades_pnl = {} # epic -> last known pnl
 
-async def generate_protocol(epic: str, direction: str, news: str, prob: float, reasoning: str, pnl: float):
-    """Genera un protocollo di apprendimento usando Gemini, integrando il contesto di mercato."""
-    if not GEMINI_API_KEY:
-        return
-        
-    outcome_str = "SUCCESSO (Profitto)" if pnl > 0 else "FALLIMENTO (Perdita)"
-    
-    # Recupera il contesto di mercato dal Data Lake (Ultime 10 ore)
-    candles_context = ""
-    try:
-        last_candles = db.get_candles(epic, 10)
-        if last_candles:
-            candles_context = "\nContesto di Mercato (Ultime 10 candele orarie - Close, Vol):\n"
-            for i, c in enumerate(last_candles):
-                candles_context += f"T-{10-i}: Close={c['closePrice']['bid']:.4f}, Vol={c['lastTradedVolume']}\n"
-    except Exception as e:
-        logger.error(f"Errore nel recupero candele per {epic}: {e}")
-    
-    prompt = f"""
-Sei il Supervisore Capo (Analista Quantitativo Esterno) di un Hedge Fund.
-Il tuo compito è analizzare le decisioni passate delle tue IA subordinate e creare regole matematiche e tecniche ferree (Protocolli) per evitare errori futuri o consolidare successi.
-
-Dettagli del Trade Appena Chiuso:
-- Asset: {epic}
-- Direzione Scelta: {direction}
-- Notizia Iniziale: "{news}"
-- Probabilità Calcolata (XGBoost): {prob*100:.2f}%
-- Ragionamento del Manager (Gemini): "{reasoning}"
-- ESITO FINALE: {outcome_str} ({pnl:.2f}%)
-{candles_context}
-
-Se l'esito è stato un SUCCESSO, scrivi una breve regola che incoraggi questo setup.
-Se l'esito è stato un FALLIMENTO, osserva le candele: se hai comprato su un picco, o in un trend ribassista, usa queste informazioni per scrivere una regola correttiva TECNICA e non solo basata sulle news. Esempio: "Su {epic}, non aprire posizioni LONG se le ultime 3 candele mostrano un trend discendente marcato."
-
-Rispondi SOLO con il testo della regola (massimo 2-3 frasi), senza commenti.
-"""
-    try:
-        model = genai.GenerativeModel('gemini-3.1-pro-preview')
-        response = await asyncio.to_thread(model.generate_content, prompt)
-        protocol_text = response.text.strip()
-        logger.info(f"🧠 Nuovo Protocollo Generato per {epic}: {protocol_text}")
-        
-        # Salva nel DB
-        db.save_ai_protocol(protocol_text, epic)
-    except Exception as e:
-        logger.error(f"Errore durante la generazione del protocollo AI: {e}")
+async def generate_protocol(epic: str, direction: str, votes_mean: float, pnl: float):
+    """(Disattivato) La generazione testuale di Gemini è stata sostituita dalla Cross-Pollination numerica."""
+    pass
 
 async def evaluation_loop():
-    """Ciclo che verifica se i trade in DB si sono chiusi e genera i protocolli."""
-    logger.info("Avviato Ciclo di Valutazione Trade (Self-Learning)...")
+    """Ciclo che verifica se i trade in DB si sono chiusi (gestito in tempo reale dal listener)."""
+    logger.info("Avviato Ciclo di Valutazione Trade (Cross-Pollination Numerica)...")
     while True:
-        try:
-            unevaluated = db.get_unevaluated_trades()
-            for trade in unevaluated:
-                epic = trade['epic']
-                trade_id = trade['id']
-                
-                # Se il trade era tra quelli attivi, ma ora non lo è più, significa che si è chiuso!
-                # Nota: Questo check dipende dal fatto che il redis_listener continui ad aggiornare active_trades_pnl
-                # Se active_trades_pnl ha un PNL ma il trade non è nel payload 'portfolio_status' più recente, si è chiuso.
-                # Per semplificare in modo robusto: se lo troviamo in active_trades_pnl e ha un PNL, lo teniamo aggiornato.
-                # Il trigger di "chiusura" lo faremo direttamente nel listener di portfolio_status per essere realtime!
-                pass 
-                
-        except Exception as e:
-            logger.error(f"Errore nell'evaluation loop: {e}")
-        
         await asyncio.sleep(60)
 
 async def redis_listener():
@@ -96,7 +37,7 @@ async def redis_listener():
     try:
         r = await aioredis.from_url(REDIS_URL)
         pubsub = r.pubsub()
-        await pubsub.subscribe("news_alerts", "portfolio_alerts", "gemini_decisions", "audit_actions", "portfolio_status")
+        await pubsub.subscribe("supervisor_trade_genesis", "portfolio_status")
         
         # Inizializziamo set per sapere cosa è aperto
         currently_open_epics = set()
@@ -106,37 +47,27 @@ async def redis_listener():
                 channel = message['channel'].decode('utf-8')
                 data = json.loads(message['data'])
                 
-                if channel == 'portfolio_alerts':
+                if channel == 'supervisor_trade_genesis':
                     epic = data.get('epic')
-                    temp_signals[epic] = {
-                        "news": data.get('news_title', ''),
-                        "prob": data.get('xgboost_prob', 0.0)
-                    }
-                
-                elif channel == 'gemini_decisions':
-                    epic = data.get('epic')
-                    temp_decisions[epic] = {
-                        "reasoning": data.get('reasoning', ''),
-                        "decision": data.get('decision', 'HOLD')
-                    }
+                    direction = data.get('direction', 'BUY')
+                    source = data.get('source', 'UNKNOWN')
+                    votes_mean = data.get('votes_mean', 0.0)
+                    size = data.get('size', 0.0)
+                    price = data.get('price', 0.0)
                     
-                elif channel == 'audit_actions':
-                    status = data.get('status')
-                    if status == 'APPROVED':
-                        # Il trade è stato eseguito sul mercato. Cuciamo i dati.
-                        epic = data.get('epic')
-                        sig = temp_signals.get(epic, {})
-                        dec = temp_decisions.get(epic, {})
-                        
-                        direction = dec.get('decision', 'BUY')
-                        news = sig.get('news', 'N/A')
-                        prob = sig.get('prob', 0.0)
-                        reasoning = dec.get('reasoning', 'N/A')
-                        size = 0.0 # Potremmo estrarla, ma va bene mockata per ora
-                        leverage = 1
-                        
-                        db.log_trade_genesis(epic, direction, news, prob, reasoning, size, leverage)
-                        
+                    # Logga numericamente nel DB la nascita del trade
+                    # Riutilizziamo la tabella existende passando i dati numerici mappati
+                    db.log_trade_genesis(
+                        epic=epic, 
+                        direction=direction, 
+                        news_title=source, # Usiamo la colonna news per la source
+                        xgboost_prob=votes_mean, # Usiamo prob per la media dei voti
+                        gemini_reasoning=f"Voto Pesato: {votes_mean:.2f}",
+                        executed_size=size, 
+                        leverage=1
+                    )
+                    logger.info(f"🧬 Genesi Trade Registrata: {direction} su {epic} (Consiglio D'Amministrazione - Media: {votes_mean:.2f})")
+                    
                 elif channel == 'portfolio_status':
                     # Analizziamo le posizioni aperte per capire chiusure e PnL
                     open_positions = data.get('open_positions', [])
