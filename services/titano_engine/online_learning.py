@@ -2,7 +2,7 @@ import logging
 import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from stable_baselines3 import PPO
-from .database import DatabaseManager
+from database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 db = DatabaseManager()
