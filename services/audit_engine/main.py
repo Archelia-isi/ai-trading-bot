@@ -42,11 +42,12 @@ portfolio_state = {
 class OrderRequest(BaseModel):
     epic: str
     direction: str
-    size_pct: float
-    leverage: int
-    reasoning: str
+    size_pct: Optional[float] = 5.0
+    leverage: Optional[int] = 1
+    reasoning: Optional[str] = "No reasoning provided"
     news: Optional[str] = None
     prob: Optional[float] = None
+    source: str = "UNKNOWN"
 
 # Cache dei segnali per il Voto Pesato
 signal_cache = {}
