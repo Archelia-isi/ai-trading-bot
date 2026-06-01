@@ -78,7 +78,7 @@ async def titano_loop():
     setattr(__main__, 'MultiAssetFeatureExtractor', MultiAssetFeatureExtractor)
     
     try:
-        model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models", "Titano_V4_OcchiAperti.zip")
+        model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V4_OcchiAperti.zip")
         model = PPO.load(model_path, custom_objects={'MultiAssetFeatureExtractor': MultiAssetFeatureExtractor})
         logger.info("🧠 Modello Titano V4 caricato con successo!")
     except Exception as e:
