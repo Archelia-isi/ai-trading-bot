@@ -14,6 +14,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 from core.capital_api import CapitalComAPI
+from online_learning import perform_online_learning, schedule_nightly_learning
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
 logger = logging.getLogger(__name__)
@@ -159,6 +160,15 @@ async def titano_loop():
 
 @app.on_event("startup")
 async def startup_event():
+    model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V4_OcchiAperti.zip")
+    
+    # 1. Trigger Apprendimento a Caldo (Startup)
+    perform_online_learning(model_path)
+    
+    # 2. Schedulazione Notturna (Mezzanotte)
+    schedule_nightly_learning(model_path)
+    
+    # 3. Avvio Loop di Trading
     asyncio.create_task(titano_loop())
 
 @app.get("/")

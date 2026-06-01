@@ -13,3 +13,4 @@ python-dotenv==1.0.1
 torch>=2.2.0
 stable-baselines3[extra]>=2.2.1
 gymnasium>=0.29.1
+APScheduler==3.10.4

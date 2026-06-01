@@ -93,8 +93,8 @@ async def redis_listener():
     try:
         r = aioredis.from_url(REDIS_URL)
         pubsub = r.pubsub()
-        # Iscrizione a tutti i canali vitali
-        await pubsub.subscribe("news_alerts", "portfolio_alerts", "gemini_decisions", "audit_actions", "portfolio_status")
+        # Iscrizione a tutti i canali vitali della Fase 4 (Multi-Agent)
+        await pubsub.subscribe("audit_requests", "audit_actions", "portfolio_status")
         
         async for message in pubsub.listen():
             if message['type'] == 'message':

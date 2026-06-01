@@ -169,6 +169,20 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def get_recently_evaluated_trades(self, limit=100):
+        """Recupera i trade chiusi con PnL per il retrain (Experience Replay)."""
+        conn = self._get_connection()
+        if not conn: return []
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM trade_genesis WHERE is_evaluated = TRUE ORDER BY closed_at DESC LIMIT %s", (limit,))
+                return cur.fetchall()
+        except Exception as e:
+            logger.error(f"Errore recupero trade valutati per Online Learning: {e}")
+            return []
+        finally:
+            conn.close()
+
     def mark_trade_evaluated(self, trade_id: int, pnl: float):
         conn = self._get_connection()
         if not conn: return

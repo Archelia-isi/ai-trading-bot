@@ -8,13 +8,15 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/themes/odometer-theme-minimal.min.css" />
     <style>
         :root {
-            --bg-color: #0b0c10;
-            --panel-bg: rgba(31, 40, 51, 0.6);
-            --border-color: rgba(69, 162, 158, 0.3);
-            --text-main: #c5c6c7;
-            --text-highlight: #66fcf1;
-            --pos-color: #4CAF50;
-            --neg-color: #F44336;
+            /* Light Mode Theme */
+            --bg-color: #f4f7f6;
+            --panel-bg: rgba(255, 255, 255, 0.85);
+            --border-color: rgba(0, 0, 0, 0.08);
+            --text-main: #2d3436;
+            --text-muted: #636e72;
+            --text-highlight: #0984e3;
+            --pos-color: #00b894; /* Green */
+            --neg-color: #d63031; /* Red */
         }
 
         body {
@@ -23,8 +25,8 @@
             font-family: 'Inter', sans-serif;
             background-color: var(--bg-color);
             background-image: 
-                radial-gradient(circle at 15% 50%, rgba(102, 252, 241, 0.05) 0%, transparent 50%),
-                radial-gradient(circle at 85% 30%, rgba(69, 162, 158, 0.05) 0%, transparent 50%);
+                radial-gradient(circle at 15% 50%, rgba(9, 132, 227, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(0, 184, 148, 0.03) 0%, transparent 50%);
             color: var(--text-main);
             min-height: 100vh;
         }
@@ -35,11 +37,15 @@
         }
 
         h1 {
-            color: var(--text-highlight);
+            color: var(--text-main);
             text-transform: uppercase;
             letter-spacing: 2px;
             margin: 0;
             font-weight: 800;
+        }
+        
+        h1 span {
+            color: var(--text-highlight);
         }
 
         .status-dot {
@@ -49,43 +55,84 @@
             background-color: var(--pos-color);
             border-radius: 50%;
             margin-left: 10px;
-            box-shadow: 0 0 10px var(--pos-color);
+            box-shadow: 0 0 10px rgba(0, 184, 148, 0.5);
             animation: pulse 2s infinite;
         }
 
         @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+            0% { box-shadow: 0 0 0 0 rgba(0, 184, 148, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(0, 184, 148, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 184, 148, 0); }
         }
 
+        /* Top Widgets */
+        .top-widgets {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .widget {
+            flex: 1;
+            min-width: 200px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            backdrop-filter: blur(10px);
+        }
+
+        .widget-title {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .widget-value {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .widget-value.pos { color: var(--pos-color); }
+        .widget-value.neg { color: var(--neg-color); }
+
+        /* Grid */
         .grid-container {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
+            max-width: 1600px;
+            margin: 0 auto 30px auto;
         }
 
         .panel {
             background: var(--panel-bg);
             backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
             border: 1px solid var(--border-color);
             border-radius: 15px;
             padding: 20px;
-            height: 60vh;
+            height: 50vh;
             display: flex;
             flex-direction: column;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
 
         .panel-header {
-            font-size: 1.2rem;
-            font-weight: 600;
-            color: #fff;
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: var(--text-main);
             margin-bottom: 15px;
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: 2px solid var(--border-color);
             padding-bottom: 10px;
             display: flex;
             align-items: center;
@@ -105,534 +152,319 @@
             padding-right: 5px;
         }
 
-        /* Scrollbar styling */
+        /* Scrollbar */
         .feed-container::-webkit-scrollbar { width: 6px; }
-        .feed-container::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 10px;}
-        .feed-container::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px;}
+        .feed-container::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); border-radius: 10px;}
+        .feed-container::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px;}
 
         /* Feed Cards */
         .card {
-            background: rgba(0, 0, 0, 0.4);
-            border-left: 4px solid var(--text-highlight);
+            background: #ffffff;
+            border-left: 4px solid var(--text-muted);
             padding: 12px;
-            border-radius: 5px;
+            border-radius: 8px;
             font-size: 0.9rem;
             animation: slideIn 0.3s ease-out;
-            word-wrap: break-word;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+            border: 1px solid var(--border-color);
+            border-left-width: 4px;
         }
 
         .card.pos { border-left-color: var(--pos-color); }
         .card.neg { border-left-color: var(--neg-color); }
+        .card.neu { border-left-color: var(--text-highlight); }
         
         .card-header {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
             font-size: 0.8rem;
-            opacity: 0.7;
+            color: var(--text-muted);
+            font-weight: 600;
         }
 
         .card-title {
-            font-weight: 600;
-            color: #fff;
+            font-weight: 800;
+            color: var(--text-main);
             margin-bottom: 5px;
         }
 
         .badge {
-            background: rgba(255,255,255,0.1);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-
-        .badge.buy { color: var(--pos-color); background: rgba(76, 175, 80, 0.1); }
-        .badge.sell { color: var(--neg-color); background: rgba(244, 67, 54, 0.1); }
-
-        /* Portfolio Status Styles */
-        .status-bar {
-            display: flex;
-            justify-content: space-between;
-            gap: 20px;
-            max-width: 1400px;
-            margin: 0 auto 30px auto;
-        }
-
-        .status-widget {
-            background: var(--panel-bg);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 15px 20px;
-            flex: 1;
-            text-align: center;
-            box-shadow: 0 4px 15px 0 rgba(0, 0, 0, 0.2);
-        }
-
-        .widget-label {
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-bottom: 5px;
-        }
-
-        .widget-value {
-            font-size: 1.8rem;
+            background: rgba(0,0,0,0.05);
+            padding: 3px 8px;
+            border-radius: 6px;
             font-weight: 800;
-            color: #fff;
+            font-size: 0.8rem;
         }
 
-        .widget-value.pos { color: var(--pos-color); }
-        .widget-value.neg { color: var(--neg-color); }
+        .badge.buy { color: var(--pos-color); background: rgba(0, 184, 148, 0.15); }
+        .badge.sell { color: var(--neg-color); background: rgba(214, 48, 49, 0.15); }
 
-        .portfolio-panel {
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Table */
+        .table-container {
             background: var(--panel-bg);
-            backdrop-filter: blur(10px);
             border: 1px solid var(--border-color);
             border-radius: 15px;
             padding: 20px;
-            max-width: 1400px;
-            margin: 0 auto 30px auto;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
 
-        .portfolio-table {
+        table {
             width: 100%;
             border-collapse: collapse;
             text-align: left;
         }
 
-        .portfolio-table th {
-            color: rgba(255, 255, 255, 0.6);
+        th {
+            padding: 12px 15px;
+            border-bottom: 2px solid var(--border-color);
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+        }
+
+        td {
+            padding: 12px 15px;
             border-bottom: 1px solid var(--border-color);
-            padding: 10px;
-            font-weight: 600;
+            color: var(--text-main);
         }
 
-        .portfolio-table td {
-            padding: 12px 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .portfolio-table tr:last-child td { border-bottom: none; }
-        .pos-text { color: var(--pos-color); }
-        .neg-text { color: var(--neg-color); }
-
-
-        /* Settings Buttons & Modals */
-        .settings-btn {
-            background: rgba(69, 162, 158, 0.1);
-            border: 1px solid var(--border-color);
-            color: var(--text-highlight);
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Inter', sans-serif;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-        .settings-btn:hover {
-            background: rgba(69, 162, 158, 0.3);
-            box-shadow: 0 0 10px rgba(69, 162, 158, 0.5);
-        }
+        .pos-text { color: var(--pos-color); font-weight: bold; }
+        .neg-text { color: var(--neg-color); font-weight: bold; }
         
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(5px);
-            z-index: 1000;
-        }
-        
+        /* Modal Settings (Light Mode) */
         .modal {
             display: none;
             position: fixed;
-            top: 50%; left: 50%;
+            top: 50%;
+            left: 50%;
             transform: translate(-50%, -50%);
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
+            background: #ffffff;
+            padding: 30px;
             border-radius: 15px;
-            padding: 25px;
-            z-index: 1001;
-            width: 90%;
-            max-width: 500px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
-            color: #fff;
+            z-index: 1000;
+            width: 400px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            border: 1px solid var(--border-color);
         }
         
-        .modal-header {
-            font-size: 1.3rem;
-            font-weight: bold;
-            margin-bottom: 20px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            padding-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .close-btn {
-            cursor: pointer;
-            font-size: 1.5rem;
-            color: #ff5252;
-        }
-        
-        .setting-row {
-            margin-bottom: 15px;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .setting-label {
-            font-size: 0.9rem;
-            margin-bottom: 5px;
-            display: flex;
-            justify-content: space-between;
-        }
-        
-        .info-btn {
-            cursor: pointer;
-            background: none;
-            border: none;
-            color: var(--text-highlight);
-            font-size: 1rem;
-            padding: 0;
-            margin-left: 5px;
-        }
-        
-        .setting-input {
-            background: rgba(0,0,0,0.5);
-            border: 1px solid rgba(255,255,255,0.2);
-            color: #fff;
-            padding: 8px;
-            border-radius: 5px;
-            font-family: 'Inter', sans-serif;
-            width: 100%;
-            box-sizing: border-box;
-        }
-        
-        .save-btn {
-            width: 100%;
-            background: var(--pos-color);
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 15px;
-        }
-        .save-btn:hover { background: #388E3C; }
-        
-        /* Info Pop-up */
-        .info-popup {
+        #settings-overlay {
             display: none;
-            position: absolute;
-            background: #fff;
-            color: #000;
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 0.8rem;
-            width: 250px;
-            z-index: 1002;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-            pointer-events: none;
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.3);
+            backdrop-filter: blur(5px);
+            z-index: 999;
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>Mission Control <span class="status-dot"></span></h1>
-        <p>Live AI Hedge Fund Monitoring</p>
+        <h1>Consiglio d'Amministrazione <span>AI</span> <span class="status-dot"></span></h1>
+        <p style="color: var(--text-muted); margin-top: 5px;">Monitoraggio Fase 4 - Simmetria Direzionale</p>
     </header>
 
-    <div class="status-bar">
-        <div class="status-widget">
-            <div class="widget-label">Capitale Totale</div>
-            <div class="widget-value">$<span id="val-total-cap" class="odometer">0.00</span></div>
+    <div class="top-widgets">
+        <div class="widget">
+            <div class="widget-title">Capitale Totale</div>
+            <div class="widget-value">$<span id="val-total" class="odometer">0.00</span></div>
         </div>
-        <div class="status-widget">
-            <div class="widget-label">Capitale Disponibile</div>
-            <div class="widget-value">$<span id="val-avail-cap" class="odometer">0.00</span></div>
+        <div class="widget">
+            <div class="widget-title">Capitale Disponibile</div>
+            <div class="widget-value">$<span id="val-avail" class="odometer">0.00</span></div>
         </div>
-        <div class="status-widget">
-            <div class="widget-label">Capitale Investito</div>
-            <div class="widget-value">$<span id="val-invest-cap" class="odometer">0.00</span></div>
+        <div class="widget">
+            <div class="widget-title">Capitale Investito</div>
+            <div class="widget-value">$<span id="val-invest" class="odometer">0.00</span></div>
         </div>
-        <div class="status-widget">
-            <div class="widget-label">PnL Globale</div>
-            <div class="widget-value" id="val-pnl-container"><span id="pnl-sign"></span><span id="val-pnl" class="odometer">0.00</span>%</div>
-        </div>
-    </div>
-
-    <div class="portfolio-panel">
-        <div class="panel-header"><span class="panel-icon">💼</span> Posizioni Aperte</div>
-        <div class="table-container">
-            <table class="portfolio-table" id="table-positions">
-                <thead>
-                    <tr>
-                        <th>Asset</th>
-                        <th>Direzione</th>
-                        <th>Size %</th>
-                        <th>Leva</th>
-                        <th>PnL %</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr><td colspan="5" style="text-align: center; color: rgba(255,255,255,0.4);">In attesa di dati...</td></tr>
-                </tbody>
-            </table>
+        <div class="widget">
+            <div class="widget-title">Profitti / Perdite Aperti</div>
+            <div class="widget-value" id="val-pnl-container">
+                <span id="pnl-sign"></span><span id="val-pnl" class="odometer">0.00</span>%
+            </div>
         </div>
     </div>
 
+    <!-- 4 Quadranti Multi-Agente -->
     <div class="grid-container">
-        <!-- Panel 1: NLP -->
-        <div class="panel">
-            <div class="panel-header"><span class="panel-icon">🕵️</span> Il Segugio (NLP)</div>
-            <div class="feed-container" id="feed-nlp">
-                <div class="card"><div class="card-title">In ascolto sui feed RSS mondiali...</div></div>
-            </div>
-        </div>
-
-        <!-- Panel 2: Math -->
-        <div class="panel">
-            <div class="panel-header"><span class="panel-icon">🧮</span> L'Analista (XGBoost)</div>
-            <div class="feed-container" id="feed-math">
-                <div class="card"><div class="card-title">Attesa di input e scansione tecnica...</div></div>
-            </div>
-        </div>
-
-        <!-- Panel 3: Gemini -->
-        <div class="panel">
-            <div class="panel-header"><span class="panel-icon">🧠</span> Il Manager (Gemini)</div>
-            <div class="feed-container" id="feed-gemini">
-                <div class="card"><div class="card-title">In attesa di alert...</div></div>
-            </div>
-        </div>
-
-        <!-- Panel 4: Audit -->
-        <div class="panel">
-            <div class="panel-header"><span class="panel-icon">🛡️</span> Il Guardiano (Audit)</div>
-            <div class="feed-container" id="feed-audit">
-                <div class="card"><div class="card-title">In attesa di audit...</div></div>
-            </div>
-        </div>
-    </div>
-
-
-    <!-- Pannello di Controllo Parametri -->
-    <div class="portfolio-panel" style="margin-top: 30px;">
-        <div class="panel-header"><span class="panel-icon">⚙️</span> Pannello di Controllo Parametri</div>
-        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-            <button class="settings-btn" onclick="openModal('modal-scaglione-1')">⚙️ Scaglione 1 (Ricognizione)</button>
-            <button class="settings-btn" onclick="openModal('modal-scaglione-2')">⚙️ Scaglione 2 (Convinzione Forte)</button>
-            <button class="settings-btn" onclick="openModal('modal-scaglione-3')">⚙️ Scaglione 3 (Azione Estrema)</button>
-            <button class="settings-btn" onclick="openModal('modal-rischio')">🛡️ Gestione Rischio Globale</button>
-            <button class="settings-btn" onclick="openModal('modal-motori')">🏹 Motori Matematici</button>
-        </div>
-    </div>
-    
-    <div id="settings-overlay" class="modal-overlay" onclick="closeAllModals()"></div>
-    <div id="info-popup" class="info-popup"></div>
-
-    <!-- Modal Scaglione 1 -->
-    <div id="modal-scaglione-1" class="modal">
-        <div class="modal-header"><span>⚙️ Scaglione 1</span> <span class="close-btn" onclick="closeAllModals()">&times;</span></div>
         
-        <div class="setting-row">
-            <div class="setting-label">Dimensione Capitale Minima (%) <button class="info-btn" onmouseover="showInfo(event, 'Percentuale minima del portafoglio da investire in operazioni a rischio moderato.')" onmouseout="hideInfo()">ℹ️</button></div>
-            <input type="number" step="0.1" id="scaglione_1_size_min" class="setting-input">
+        <!-- Titano V4 -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-icon">🧠</span> Titano V4 (PPO)
+            </div>
+            <div class="feed-container" id="feed-titano">
+                <!-- Injected via JS -->
+            </div>
         </div>
-        <div class="setting-row">
-            <div class="setting-label">Dimensione Capitale Massima (%) <button class="info-btn" onmouseover="showInfo(event, 'Percentuale massima del portafoglio consentita per questo livello di rischio.')" onmouseout="hideInfo()">ℹ️</button></div>
-            <input type="number" step="0.1" id="scaglione_1_size_max" class="setting-input">
+
+        <!-- XGBoost -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-icon">🌲</span> XGBoost (Oracolo Tabellare)
+            </div>
+            <div class="feed-container" id="feed-xgboost">
+            </div>
         </div>
-        <div class="setting-row">
-            <div class="setting-label">Sicurezza Minima Acquisto (LONG) <button class="info-btn" onmouseover="showInfo(event, 'Probabilità matematica (es. 0.75 = 75%) richiesta all\'Intelligenza Artificiale per autorizzare un investimento rialzista a questo livello.')" onmouseout="hideInfo()">ℹ️</button></div>
-            <input type="number" step="0.01" id="scaglione_1_prob_long" class="setting-input">
+
+        <!-- Segugio NLP -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-icon">📰</span> L'Ufficio Stampa (NLP)
+            </div>
+            <div class="feed-container" id="feed-nlp">
+            </div>
         </div>
-        <div class="setting-row">
-            <div class="setting-label">Sicurezza Minima Vendita (SHORT) <button class="info-btn" onmouseover="showInfo(event, 'Probabilità matematica (es. 0.25 = 25%) richiesta all\'Intelligenza Artificiale per autorizzare un investimento ribassista a questo livello.')" onmouseout="hideInfo()">ℹ️</button></div>
-            <input type="number" step="0.01" id="scaglione_1_prob_short" class="setting-input">
+
+        <!-- Audit Board -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-icon">⚖️</span> L'Amministratore (Audit)
+            </div>
+            <div class="feed-container" id="feed-audit">
+            </div>
         </div>
-        <button class="save-btn" onclick="saveSettings(['scaglione_1_size_min', 'scaglione_1_size_max', 'scaglione_1_prob_long', 'scaglione_1_prob_short'])">Salva Modifiche</button>
+
     </div>
 
-    <!-- Modal Scaglione 2 -->
-    <div id="modal-scaglione-2" class="modal">
-        <div class="modal-header"><span>⚙️ Scaglione 2</span> <span class="close-btn" onclick="closeAllModals()">&times;</span></div>
-        <div class="setting-row"><div class="setting-label">Dimensione Capitale Minima (%) <button class="info-btn" onmouseover="showInfo(event, 'Percentuale minima per investimenti ad alta convinzione.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.1" id="scaglione_2_size_min" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Dimensione Capitale Massima (%) <button class="info-btn" onmouseover="showInfo(event, 'Percentuale massima per investimenti ad alta convinzione.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.1" id="scaglione_2_size_max" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Sicurezza Minima Acquisto (LONG) <button class="info-btn" onmouseover="showInfo(event, 'Probabilità matematica richiesta (es. 0.90) per un ingresso pesante a rialzo.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.01" id="scaglione_2_prob_long" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Sicurezza Minima Vendita (SHORT) <button class="info-btn" onmouseover="showInfo(event, 'Probabilità matematica richiesta (es. 0.10) per un ingresso pesante a ribasso.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.01" id="scaglione_2_prob_short" class="setting-input"></div>
-        <button class="save-btn" onclick="saveSettings(['scaglione_2_size_min', 'scaglione_2_size_max', 'scaglione_2_prob_long', 'scaglione_2_prob_short'])">Salva Modifiche</button>
-    </div>
-
-    <!-- Modal Scaglione 3 -->
-    <div id="modal-scaglione-3" class="modal">
-        <div class="modal-header"><span>⚙️ Scaglione 3</span> <span class="close-btn" onclick="closeAllModals()">&times;</span></div>
-        <div class="setting-row"><div class="setting-label">Dimensione Capitale Minima (%) <button class="info-btn" onmouseover="showInfo(event, 'Percentuale minima per occasioni estreme e irripetibili.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.1" id="scaglione_3_size_min" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Dimensione Capitale Massima (%) <button class="info-btn" onmouseover="showInfo(event, 'Tetto massimo invalicabile di investimento per una singola operazione.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.1" id="scaglione_3_size_max" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Sicurezza Estrema Acquisto (LONG) <button class="info-btn" onmouseover="showInfo(event, 'Probabilità quasi assoluta richiesta (es. 0.95) per operazioni estreme a rialzo.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.01" id="scaglione_3_prob_long" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Sicurezza Estrema Vendita (SHORT) <button class="info-btn" onmouseover="showInfo(event, 'Probabilità quasi assoluta richiesta (es. 0.05) per operazioni estreme a ribasso.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.01" id="scaglione_3_prob_short" class="setting-input"></div>
-        <button class="save-btn" onclick="saveSettings(['scaglione_3_size_min', 'scaglione_3_size_max', 'scaglione_3_prob_long', 'scaglione_3_prob_short'])">Salva Modifiche</button>
-    </div>
-
-    <!-- Modal Rischio -->
-    <div id="modal-rischio" class="modal">
-        <div class="modal-header"><span>🛡️ Gestione Rischio Globale</span> <span class="close-btn" onclick="closeAllModals()">&times;</span></div>
-        <div class="setting-row"><div class="setting-label">Esposizione Massima Globale (%) <button class="info-btn" onmouseover="showInfo(event, 'Blocca l\'apertura di nuove operazioni se il portafoglio è già esposto sul mercato per questa percentuale (es. 50.0).')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.1" id="max_exposure" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Leva Finanziaria Massima Consentita <button class="info-btn" onmouseover="showInfo(event, 'Il Guardiano taglierà automaticamente ogni richiesta di leva superiore a questo valore (es. 5).')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="1" id="max_leverage" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Perdita Massima Tollerata (%) <button class="info-btn" onmouseover="showInfo(event, 'Soglia critica negativa (es. -3.0). Se il portafoglio totale scende a questo valore, il bot chiude tutte le posizioni e si blocca per la giornata.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.1" id="max_drawdown" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Obiettivo di Profitto Giornaliero (%) <button class="info-btn" onmouseover="showInfo(event, 'Soglia di successo (es. 1.0). Se il portafoglio raggiunge questo profitto, il bot incassa i guadagni e conclude la giornata lavorativa.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.1" id="daily_take_profit" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Soglia Modalità di Recupero Emergenza <button class="info-btn" onmouseover="showInfo(event, 'In caso di blocco per perdite, il bot può ignorare il divieto se scova una nuova occasione con probabilità superiore a questo valore (es. 0.90).')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.01" id="recovery_mode_prob" class="setting-input"></div>
-        <button class="save-btn" onclick="saveSettings(['max_exposure', 'max_leverage', 'max_drawdown', 'daily_take_profit', 'recovery_mode_prob'])">Salva Modifiche</button>
-    </div>
-
-    <!-- Modal Motori -->
-    <div id="modal-motori" class="modal">
-        <div class="modal-header"><span>🏹 Motori Matematici</span> <span class="close-btn" onclick="closeAllModals()">&times;</span></div>
-        <div class="setting-row"><div class="setting-label">Soglia Intervento Cacciatore (Acquisto) <button class="info-btn" onmouseover="showInfo(event, 'Scansiona l\'intero mercato: spara segnali tecnici se la probabilità LONG supera questa soglia (es. 0.65).')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.01" id="hunter_long" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Soglia Intervento Cacciatore (Vendita) <button class="info-btn" onmouseover="showInfo(event, 'Scansiona l\'intero mercato: spara segnali tecnici se la probabilità SHORT scende sotto questa soglia (es. 0.35).')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.01" id="hunter_short" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Soglia Conferma Segugio (Acquisto) <button class="info-btn" onmouseover="showInfo(event, 'Convalida notizie finanziarie positive se l\'analisi tecnica successiva supera questa soglia LONG (es. 0.60).')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.01" id="segugio_long" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Soglia Conferma Segugio (Vendita) <button class="info-btn" onmouseover="showInfo(event, 'Convalida notizie finanziarie negative se l\'analisi tecnica successiva scende sotto questa soglia SHORT (es. 0.40).')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.01" id="segugio_short" class="setting-input"></div>
-        <div class="setting-row"><div class="setting-label">Rigidità Modello Predittivo (Lambda) <button class="info-btn" onmouseover="showInfo(event, 'Controllo di regolarizzazione di XGBoost (es. 10.0). Valori più alti rendono l\'AI più conservativa e prudente, valori bassi la rendono aggressiva.')" onmouseout="hideInfo()">ℹ️</button></div><input type="number" step="0.1" id="xgboost_lambda" class="setting-input"></div>
-        <button class="save-btn" onclick="saveSettings(['hunter_long', 'hunter_short', 'segugio_long', 'segugio_short', 'xgboost_lambda'])">Salva Modifiche</button>
+    <!-- Posizioni Aperte -->
+    <div class="table-container">
+        <div class="panel-header" style="border:none; margin-bottom:0;">
+            <span class="panel-icon">📊</span> Portafoglio Attivo
+        </div>
+        <table id="table-positions">
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th>Direzione</th>
+                    <th>Dimensione</th>
+                    <th>Leva</th>
+                    <th>Profitti/Perdite %</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="5" style="text-align: center; color: var(--text-muted);">Nessuna posizione aperta</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
     <script>
-        // Inizializzazione Odometer
-        const odoTotal = new Odometer({ el: document.getElementById('val-total-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
-        const odoAvail = new Odometer({ el: document.getElementById('val-avail-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
-        const odoInvest = new Odometer({ el: document.getElementById('val-invest-cap'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
-        const odoPnl = new Odometer({ el: document.getElementById('val-pnl'), value: 0, format: '(,ddd).dd', theme: 'minimal' });
-        
-        // Cache per evitare animazioni a vuoto
-        const currentVals = { total: -1, avail: -1, invest: -1, pnl: null };
-        
-        // Gestione WebSocket
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${protocol}//${window.location.host}/ws`;
-        
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
         let ws;
-        
+
+        const odoTotal = new Odometer({ el: document.getElementById('val-total'), value: 0, format: '(,ddd).dd' });
+        const odoAvail = new Odometer({ el: document.getElementById('val-avail'), value: 0, format: '(,ddd).dd' });
+        const odoInvest = new Odometer({ el: document.getElementById('val-invest'), value: 0, format: '(,ddd).dd' });
+        const odoPnl = new Odometer({ el: document.getElementById('val-pnl'), value: 0, format: '(,ddd).dd' });
+
+        let currentVals = { total: 0, avail: 0, invest: 0, pnl: 0 };
+
         function connect() {
             ws = new WebSocket(wsUrl);
-            
-            ws.onopen = () => {
-                document.querySelector('.status-dot').style.backgroundColor = '#4CAF50';
-                console.log("WebSocket connected");
-            };
-
-            ws.onclose = () => {
-                document.querySelector('.status-dot').style.backgroundColor = '#F44336';
-                console.log("WebSocket disconnected. Retrying...");
-                setTimeout(connect, 3000);
-            };
-
             ws.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
                 handleMessage(msg.channel, msg.data);
             };
+            ws.onclose = () => { setTimeout(connect, 3000); };
         }
 
-        function addCard(containerId, htmlContent, typeClass = '') {
+        function addCard(containerId, htmlContent, cls) {
             const container = document.getElementById(containerId);
             const card = document.createElement('div');
-            card.className = `card ${typeClass}`;
+            card.className = `card ${cls}`;
             card.innerHTML = htmlContent;
-            
-            // Aggiungi in cima
             container.insertBefore(card, container.firstChild);
-            
-            // Mantieni max 50 messaggi per colonna per non intasare la RAM
-            if (container.children.length > 50) {
+            if (container.children.length > 30) {
                 container.removeChild(container.lastChild);
             }
         }
 
         function handleMessage(channel, data) {
-            const time = new Date().toLocaleTimeString();
+            const time = new Date().toLocaleTimeString('it-IT');
             
-            if (channel === 'news_alerts') {
-                const isPos = data.label === 'POSITIVE';
-                const cls = isPos ? 'pos' : 'neg';
-                const html = `
-                    <div class="card-header"><span>${time}</span> <span>Score: ${data.score.toFixed(2)}</span></div>
-                    <div class="card-title">${data.title}</div>
-                    <div><span class="badge ${isPos ? 'buy' : 'sell'}">${data.label}</span></div>
-                `;
-                addCard('feed-nlp', html, cls);
+            if (channel === 'audit_requests') {
+                // Gestione Segnali dai vari Motori
+                const epic = data.epic || 'UNKNOWN';
+                const direction = data.direction; // BUY, SELL, FLAT
+                const prob = Math.round(data.prob * 100) || 0;
+                
+                let dirIT = 'ATTESA';
+                let badgeCls = 'neu';
+                if (direction === 'BUY') { dirIT = 'RIALZISTA'; badgeCls = 'buy'; }
+                if (direction === 'SELL') { dirIT = 'RIBASSISTA'; badgeCls = 'sell'; }
+                
+                const source = data.source || '';
+                
+                if (source === 'TITANO_V4') {
+                    const html = `
+                        <div class="card-header"><span>${time}</span> <span>${epic}</span></div>
+                        <div class="card-title">Direzione: <span class="badge ${badgeCls}">${dirIT}</span></div>
+                        <div>Sicurezza: <strong>${prob}%</strong></div>
+                    `;
+                    addCard('feed-titano', html, direction === 'BUY' ? 'pos' : (direction === 'SELL' ? 'neg' : 'neu'));
+                }
+                else if (source === 'XGBOOST') {
+                    // XGBoost somma o sottrae
+                    const effect = prob > 50 ? 'Somma' : 'Sottrae';
+                    const effectColor = prob > 50 ? 'pos' : 'neg';
+                    const html = `
+                        <div class="card-header"><span>${time}</span> <span>${epic}</span></div>
+                        <div class="card-title">Analisi Volatilità <span class="badge ${badgeCls}">${dirIT}</span></div>
+                        <div style="color: var(--${effectColor}-color); font-weight:bold;">${effect} punti in Sicurezza (${prob}%)</div>
+                    `;
+                    addCard('feed-xgboost', html, effectColor);
+                }
+                else if (source === 'NLP_ENGINE') {
+                    const title = data.title || 'Notizia rilevata';
+                    let extraMsg = `Valutazione Sentiment: ${prob}%`;
+                    if (prob > 90) {
+                        extraMsg = `🚨 Notizia Estrema! Generata Sicurezza 100 verso direzione ${dirIT}`;
+                    }
+                    const html = `
+                        <div class="card-header"><span>${time}</span> <span>${epic}</span></div>
+                        <div class="card-title" style="font-size:0.85rem;">"${title}"</div>
+                        <div><span class="badge ${badgeCls}">${dirIT}</span></div>
+                        <div style="margin-top:5px; font-weight:600; font-size:0.8rem;">${extraMsg}</div>
+                    `;
+                    addCard('feed-nlp', html, direction === 'BUY' ? 'pos' : (direction === 'SELL' ? 'neg' : 'neu'));
+                }
             }
             
-            else if (channel === 'portfolio_alerts') {
-                const isBuy = data.action_suggested === 'BUY';
-                const cls = isBuy ? 'pos' : 'neg';
-                const html = `
-                    <div class="card-header"><span>${time}</span> <span>${data.epic}</span></div>
-                    <div class="card-title">Target: ${data.epic}</div>
-                    <div>Prob. Rialzo: ${(data.xgboost_prob * 100).toFixed(2)}%</div>
-                    <div>Azione: <span class="badge ${isBuy ? 'buy' : 'sell'}">${data.action_suggested}</span></div>
-                `;
-                addCard('feed-math', html, cls);
-            }
-
-            else if (channel === 'gemini_decisions') {
-                const isBuy = data.decision === 'BUY';
-                const cls = data.decision === 'HOLD' ? '' : (isBuy ? 'pos' : 'neg');
-                const html = `
-                    <div class="card-header"><span>${time}</span> <span>${data.epic}</span></div>
-                    <div class="card-title">Decisione: <span class="badge ${data.decision.toLowerCase()}">${data.decision}</span></div>
-                    <div>Size: ${data.size_pct}% | Leva: ${data.leverage}</div>
-                    <div style="margin-top:5px; font-style:italic; opacity:0.8; font-size:0.8rem;">"${data.reasoning}"</div>
-                `;
-                addCard('feed-gemini', html, cls);
-            }
-
             else if (channel === 'audit_actions') {
-                const isApproved = data.status === 'APPROVED';
-                const cls = isApproved ? 'pos' : 'neg';
+                const epic = data.epic || 'SISTEMA';
+                const actionDesc = data.action;
+                const status = data.status; // APPROVED, REJECTED
+                const isApproved = status === 'APPROVED';
+                
                 const html = `
-                    <div class="card-header"><span>${time}</span> <span>${data.epic || 'SYSTEM'}</span></div>
-                    <div class="card-title">${data.action}</div>
-                    <div>Stato: <span class="badge ${isApproved ? 'buy' : 'sell'}">${data.status}</span></div>
-                    <div style="margin-top:5px; font-size:0.8rem;">${data.details}</div>
+                    <div class="card-header"><span>${time}</span> <span>${epic}</span></div>
+                    <div class="card-title">Esito: <span class="badge ${isApproved ? 'buy' : 'sell'}">${isApproved ? 'APPROVATO' : 'RESPINTO'}</span></div>
+                    <div>${actionDesc}</div>
+                    <div style="margin-top:5px; font-size:0.8rem; font-style:italic;">Media Matematica Assoluta elaborata</div>
                 `;
-                addCard('feed-audit', html, cls);
+                addCard('feed-audit', html, isApproved ? 'pos' : 'neg');
             }
             
             else if (channel === 'portfolio_status') {
-                // Arrotonda ai due decimali per i controlli ed evita falsi scatti
                 const newTotal = parseFloat(data.total_capital.toFixed(2));
                 const newAvail = parseFloat(data.available_capital.toFixed(2));
                 const newInvest = parseFloat(data.invested_capital.toFixed(2));
                 const newPnl = parseFloat(data.current_pnl_pct.toFixed(2));
                 
-                if (currentVals.total !== newTotal) {
-                    odoTotal.update(newTotal);
-                    currentVals.total = newTotal;
-                }
-                
-                if (currentVals.avail !== newAvail) {
-                    odoAvail.update(newAvail);
-                    currentVals.avail = newAvail;
-                }
-                
-                if (currentVals.invest !== newInvest) {
-                    odoInvest.update(newInvest);
-                    currentVals.invest = newInvest;
-                }
-                
+                if (currentVals.total !== newTotal) { odoTotal.update(newTotal); currentVals.total = newTotal; }
+                if (currentVals.avail !== newAvail) { odoAvail.update(newAvail); currentVals.avail = newAvail; }
+                if (currentVals.invest !== newInvest) { odoInvest.update(newInvest); currentVals.invest = newInvest; }
                 if (currentVals.pnl !== newPnl) {
                     const isPos = newPnl > 0;
                     const isNeg = newPnl < 0;
@@ -642,14 +474,10 @@
                     currentVals.pnl = newPnl;
                 }
                 
-                // Update Table Smoothly
                 const tbody = document.querySelector('#table-positions tbody');
-                
                 if (data.open_positions.length === 0) {
-                    const emptyMsg = '<tr><td colspan="5" style="text-align: center; color: rgba(255,255,255,0.4);">Nessuna posizione aperta</td></tr>';
-                    if (tbody.innerHTML !== emptyMsg) {
-                        tbody.innerHTML = emptyMsg;
-                    }
+                    const emptyMsg = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nessuna posizione aperta</td></tr>';
+                    if (tbody.innerHTML !== emptyMsg) tbody.innerHTML = emptyMsg;
                 } else {
                     let newHtml = '';
                     data.open_positions.forEach(pos => {
@@ -658,80 +486,18 @@
                         newHtml += `
                             <tr>
                                 <td><strong>${pos.epic}</strong></td>
-                                <td><span class="badge ${isBuy ? 'buy' : 'sell'}">${pos.direction}</span></td>
+                                <td><span class="badge ${isBuy ? 'buy' : 'sell'}">${isBuy ? 'RIALZISTA' : 'RIBASSISTA'}</span></td>
                                 <td>${pos.size.toFixed(2)}%</td>
                                 <td>${pos.leverage}x</td>
                                 <td class="${pnlCls}"><strong>${pos.pnl_pct > 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%</strong></td>
                             </tr>
                         `;
                     });
-                    
-                    // Sostituisce solo se c'è un cambiamento reale, evitando il fastidioso sfarfallio
-                    if (tbody.innerHTML !== newHtml) {
-                        tbody.innerHTML = newHtml;
-                    }
+                    if (tbody.innerHTML !== newHtml) tbody.innerHTML = newHtml;
                 }
             }
         }
 
-
-        // Settings Management
-        async function fetchSettings() {
-            try {
-                const res = await fetch('/api/settings');
-                const data = await res.json();
-                if (data.status === 'success') {
-                    for (const [key, val] of Object.entries(data.settings)) {
-                        const el = document.getElementById(key);
-                        if (el) el.value = val;
-                    }
-                }
-            } catch (e) { console.error('Errore caricamento impostazioni:', e); }
-        }
-        
-        async function saveSettings(keys) {
-            for (const key of keys) {
-                const el = document.getElementById(key);
-                if (el) {
-                    try {
-                        await fetch('/api/settings', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ key: key, value: el.value })
-                        });
-                    } catch (e) { console.error('Errore salvataggio:', e); }
-                }
-            }
-            alert('Modifiche salvate con successo!');
-            closeAllModals();
-        }
-
-        function openModal(id) {
-            document.getElementById('settings-overlay').style.display = 'block';
-            document.getElementById(id).style.display = 'block';
-        }
-        
-        function closeAllModals() {
-            document.getElementById('settings-overlay').style.display = 'none';
-            document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
-        }
-        
-        function showInfo(e, text) {
-            const popup = document.getElementById('info-popup');
-            popup.textContent = text;
-            popup.style.display = 'block';
-            popup.style.left = (e.pageX + 10) + 'px';
-            popup.style.top = (e.pageY + 10) + 'px';
-        }
-        
-        function hideInfo() {
-            document.getElementById('info-popup').style.display = 'none';
-        }
-        
-        // Fetch on load
-        fetchSettings();
-
-        // Avvia connessione
         connect();
     </script>
 </body>
