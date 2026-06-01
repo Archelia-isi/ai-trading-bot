@@ -276,7 +276,7 @@ async def startup_event():
     # Carica la pool globale
     global global_pool_epics
     try:
-        pool_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "math_engine", "global_assets.json")
+        pool_path = os.path.join(os.path.dirname(__file__), "global_assets.json")
         with open(pool_path, 'r') as f:
             global_pool_epics = json.load(f)
         logger.info(f"Segugio Pool caricato con {len(global_pool_epics)} asset.")
