@@ -184,8 +184,8 @@ async def titano_loop():
                     df['news_proxy'] = news_sentiment
                     
                     df_last_30 = df.iloc[-30:]
-                    # Ora la matrice è 30x4!
-                    feat_matrix = df_last_30[['close', 'volatility', 'xgb_proxy', 'news_proxy']].to_numpy(dtype=np.float32)
+                    # Ora la matrice è 30x4! Usiamo 'returns' come Prezzo_Norm dell'addestramento!
+                    feat_matrix = df_last_30[['returns', 'volatility', 'xgb_proxy', 'news_proxy']].to_numpy(dtype=np.float32)
                     
                     batch_obs.append(feat_matrix)
                     valid_assets.append(epic)
@@ -221,11 +221,11 @@ async def titano_loop():
 async def startup_event():
     model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V5_OcchiAperti.zip")
     
-    # 1. Trigger Apprendimento a Caldo (Startup)
-    perform_online_learning(model_path)
+    # 1. Start-up: Online Learning dai trade passati
+    perform_online_learning()
     
     # 2. Schedulazione Notturna (Mezzanotte)
-    schedule_nightly_learning(model_path)
+    schedule_nightly_learning()
     
     # 3. Avvio Loop di Trading
     asyncio.create_task(titano_loop())
