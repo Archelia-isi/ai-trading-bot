@@ -118,30 +118,22 @@ async def audit_order(req: OrderRequest):
     amount_to_invest = equity * (final_size / 100.0)
     lot_size = ((amount_to_invest * final_leverage) / market_price) if market_price > 0 else 0.1
     
-    if final_direction == "SELL":
-        # ESECUZIONE REALE SU CAPITAL.COM (SOLO SHORT)
-        if api.is_authenticated:
-            min_size = api.get_min_deal_size(real_epic)
-            lot_size = max(lot_size, min_size)
-            
-            logger.info(f"🔥 ARBITRAGGIO: SHORT inviato a CAPITAL.COM ({lot_size} lotti su {real_epic})")
-            res = api.place_order(real_epic, final_direction, lot_size)
-            
-            if res.get("status") != "success":
-                await publish_audit_action(real_epic, f"SELL {lot_size}", "REJECTED", f"Capital API Error: {res.get('message')}")
-                return {"status": "error", "reason": "Broker Error"}
-                
-            await publish_audit_action(real_epic, f"SELL {lot_size} L{final_leverage}x", "APPROVED", "Eseguito su Capital.com")
-        else:
-            logger.warning("Capital.com non connesso. MOCK SHORT.")
-    else:
-        # ESECUZIONE SIMULATA SU BINANCE (SOLO LONG)
-        logger.info(f"🟢 ARBITRAGGIO: LONG simulato su BINANCE PAPER TRADING ({lot_size} lotti su {real_epic})")
-        # Applichiamo una finta fee dello 0.1% come su Binance reale per rendere il mock realistico
-        fee_usd = amount_to_invest * 0.001
-        portfolio_state["total_capital"] -= fee_usd # Detrazione capitale condiviso
+    # ESECUZIONE REALE SU CAPITAL.COM (BUY e SELL)
+    if api.is_authenticated:
+        min_size = api.get_min_deal_size(real_epic)
+        lot_size = max(lot_size, min_size)
         
-        await publish_audit_action(real_epic, f"BUY {lot_size} L{final_leverage}x", "APPROVED", f"Simulato su Binance (Fee: {fee_usd:.2f}$)")
+        logger.info(f"🔥 ARBITRAGGIO: {final_direction} inviato a CAPITAL.COM ({lot_size} lotti su {real_epic})")
+        res = api.place_order(real_epic, final_direction, lot_size)
+        
+        if res.get("status") != "success":
+            await publish_audit_action(real_epic, f"{final_direction} {lot_size}", "REJECTED", f"Capital API Error: {res.get('message')}")
+            return {"status": "error", "reason": "Broker Error"}
+            
+        await publish_audit_action(real_epic, f"{final_direction} {lot_size} L{final_leverage}x", "APPROVED", "Eseguito su Capital.com")
+    else:
+        logger.warning("Capital.com non connesso. MOCK TRADE.")
+        await publish_audit_action(real_epic, f"{final_direction} {lot_size} L{final_leverage}x", "APPROVED", f"Simulato (Broker offline)")
 
     # Aggiornamento Portafoglio
     portfolio_state["open_positions"].append({
