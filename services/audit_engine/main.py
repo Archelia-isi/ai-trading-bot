@@ -110,6 +110,12 @@ async def audit_order(req: OrderRequest):
 
     final_size = req.size_pct
     final_leverage = req.leverage
+    
+    # Controllo Capitale Disponibile (Esposizione Max 100%)
+    current_exposure_pct = sum(p['size'] for p in portfolio_state["open_positions"])
+    if current_exposure_pct + final_size > 100.0:
+        logger.warning(f"❌ Capitale Esaurito! Impossibile aprire {real_epic} (Esposizione: {current_exposure_pct}% + {final_size}%)")
+        return {"status": "rejected", "reason": "Insufficient Capital"}
         
     # --- 2. ARBITRAGGIO MULTI-BROKER (CAPITALE CONDIVISO) ---
     market_price = api.get_market_price(real_epic)
