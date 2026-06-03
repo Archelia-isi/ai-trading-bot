@@ -55,8 +55,13 @@ class DatabaseManager:
                         executed_size FLOAT,
                         leverage INT,
                         outcome_pnl FLOAT,
-                        is_evaluated BOOLEAN DEFAULT FALSE
+                        is_evaluated BOOLEAN DEFAULT FALSE,
+                        market_state JSONB
                     );
+                    
+                    -- Aggiornamento retroattivo per DB esistenti
+                    ALTER TABLE trade_genesis ADD COLUMN IF NOT EXISTS market_state JSONB;
+
                     
                     CREATE TABLE IF NOT EXISTS ai_protocols (
                         id SERIAL PRIMARY KEY,
@@ -140,15 +145,15 @@ class DatabaseManager:
 
     # --- SUPERVISOR METHODS ---
     
-    def log_trade_genesis(self, epic: str, direction: str, news_title: str, xgboost_prob: float, gemini_reasoning: str, executed_size: float, leverage: int):
+    def log_trade_genesis(self, epic: str, direction: str, news_title: str, xgboost_prob: float, gemini_reasoning: str, executed_size: float, leverage: int, market_state_json: str = None):
         conn = self._get_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO trade_genesis (epic, direction, news_title, xgboost_prob, gemini_reasoning, executed_size, leverage)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (epic, direction, news_title, xgboost_prob, gemini_reasoning, executed_size, leverage))
+                    INSERT INTO trade_genesis (epic, direction, news_title, xgboost_prob, gemini_reasoning, executed_size, leverage, market_state)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (epic, direction, news_title, xgboost_prob, gemini_reasoning, executed_size, leverage, market_state_json))
             conn.commit()
             logger.info(f"Genesi del trade {epic} salvata nel DB.")
         except Exception as e:

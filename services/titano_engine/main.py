@@ -71,17 +71,28 @@ def get_capital_epic(ticker: str) -> str:
     if ticker.startswith("C:"): return ticker.replace("C:", "")
     return ticker
 
+# --- TOGGLE DI TRANSIZIONE (V5 -> V6) ---
+# Imposta a True SOLO quando hai caricato il file Titano_V6_Universale.zip
+USIAMO_LA_V6 = False
+
 async def titano_loop():
-    logger.info("Avviato Titano V4 Engine (Loop a 1 minuto)...")
+    logger.info(f"Avviato Titano Engine (V6={USIAMO_LA_V6})...")
     
-    # Registriamo la classe custom nel modulo principale per permettere a PPO di trovarla
     import __main__
     setattr(__main__, 'MultiAssetFeatureExtractor', MultiAssetFeatureExtractor)
     
+    # IMPORTANTE: Quando useremo la V6, dovremo registrare la nuova classe UniversalFeatureExtractor
+    
     try:
-        model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V4_OcchiAperti.zip")
-        model = PPO.load(model_path, custom_objects={'MultiAssetFeatureExtractor': MultiAssetFeatureExtractor})
-        logger.info("🧠 Modello Titano V4 caricato con successo!")
+        if not USIAMO_LA_V6:
+            model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V4_OcchiAperti.zip")
+            model = PPO.load(model_path, custom_objects={'MultiAssetFeatureExtractor': MultiAssetFeatureExtractor})
+            logger.info("🧠 Modello Titano V4/V5 caricato con successo!")
+        else:
+            model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V6_Universale.zip")
+            # In futuro si aggiungerà il custom_object per UniversalFeatureExtractor
+            # model = PPO.load(model_path, custom_objects={'UniversalFeatureExtractor': UniversalFeatureExtractor})
+            logger.info("🧠 Modello Titano V6 UNIVERSALE caricato!")
     except Exception as e:
         logger.error(f"Errore caricamento modello: {e}")
         return
@@ -92,67 +103,98 @@ async def titano_loop():
     while True:
         try:
             logger.info("🔄 Esecuzione Titano Live Inference...")
-            asset_features = []
             
-            for ticker in ASSETS:
-                epic = get_capital_epic(ticker)
-                
-                # Preleviamo le ultime 50 candele al minuto per avere margine per il calcolo della volatilità (rolling 20)
-                candles = api.get_historical_prices(epic, max_candles=50, resolution="MINUTE")
-                
-                if not candles or len(candles) < 30:
-                    logger.warning(f"Dati insufficienti per {epic}. Uso array di zeri.")
-                    closes = np.zeros(50)
-                else:
-                    closes = np.array([c.get('closePrice', {}).get('bid', 0.0) for c in candles])
-                
-                df = pd.DataFrame({'close': closes})
-                df['returns'] = df['close'].pct_change()
-                df['volatility'] = df['returns'].rolling(window=20).std()
-                
-                df.fillna(0, inplace=True)
-                
-                # Prendiamo esattamente le ultime 30 candele
-                df_last_30 = df.iloc[-30:]
-                
-                # Estraiamo 'close' e 'volatility' proprio come nel training
-                feat_matrix = df_last_30[['close', 'volatility']].to_numpy(dtype=np.float32)
-                asset_features.append(feat_matrix)
-                
-            # asset_features è una lista di 17 matrici (30, 2)
-            # Dobbiamo concatenarle sull'asse 1 (le feature) per ottenere (30, 34)
-            obs = np.concatenate(asset_features, axis=1)
-            
-            # PPO si aspetta (Batch, Window, Features) -> aggiungiamo la dimensione batch
-            # ma il metodo predict() di default gestisce automaticamente un singolo sample se l'env non è vettorizzato,
-            # però passando un numpy array grezzo conviene assicurarci della forma (30, 34) 
-            
-            action, _ = model.predict(obs, deterministic=True)
-            
-            logger.info(f"⚡ Titano ha deciso: {action}")
-            
-            # action è un array [17] con valori 0 (Short), 1 (Flat), 2 (Long)
-            for i, ticker in enumerate(ASSETS):
-                act_val = action[i]
-                epic = get_capital_epic(ticker)
-                
-                direction = "FLAT"
-                if act_val == 0: direction = "SELL"
-                elif act_val == 2: direction = "BUY"
-                
-                if direction != "FLAT":
-                    # Pubblica la richiesta di Audit
-                    req = {
-                        "epic": epic,
-                        "direction": direction,
-                        "size_pct": 5.0, # Dimensione fissa pilot per ora
-                        "leverage": 1,
-                        "prob": 0.99, # Titano deterministico
-                        "source": "TITANO_V4"
-                    }
-                    await r.publish("audit_requests", json.dumps(req))
-                    logger.info(f"Inviata richiesta Audit per {epic}: {direction}")
+            if not USIAMO_LA_V6:
+                # ==========================================
+                # LOGICA VECCHIA V4/V5 (MATRICE UNICA 17 ASSET)
+                # ==========================================
+                asset_features = []
+                for ticker in ASSETS:
+                    epic = get_capital_epic(ticker)
+                    candles = api.get_historical_prices(epic, max_candles=50, resolution="MINUTE")
+                    if not candles or len(candles) < 30:
+                        closes = np.zeros(50)
+                    else:
+                        closes = np.array([c.get('closePrice', {}).get('bid', 0.0) for c in candles])
                     
+                    df = pd.DataFrame({'close': closes})
+                    df['returns'] = df['close'].pct_change()
+                    df['volatility'] = df['returns'].rolling(window=20).std()
+                    df.fillna(0, inplace=True)
+                    df_last_30 = df.iloc[-30:]
+                    feat_matrix = df_last_30[['close', 'volatility']].to_numpy(dtype=np.float32)
+                    asset_features.append(feat_matrix)
+                    
+                obs = np.concatenate(asset_features, axis=1)
+                action, _ = model.predict(obs, deterministic=True)
+                
+                for i, ticker in enumerate(ASSETS):
+                    act_val = action[i]
+                    epic = get_capital_epic(ticker)
+                    direction = "FLAT"
+                    if act_val == 0: direction = "SELL"
+                    elif act_val == 2: direction = "BUY"
+                    
+                    if direction != "FLAT":
+                        req = {"epic": epic, "direction": direction, "size_pct": 5.0, "leverage": 1, "prob": 0.99, "source": "TITANO_V4"}
+                        await r.publish("audit_requests", json.dumps(req))
+            else:
+                # ==========================================
+                # NUOVA LOGICA V6 UNIVERSALE (MULTIPROCESSO)
+                # ==========================================
+                batch_obs = []
+                valid_assets = []
+                
+                for ticker in ASSETS:
+                    epic = get_capital_epic(ticker)
+                    candles = api.get_historical_prices(epic, max_candles=50, resolution="MINUTE")
+                    if not candles or len(candles) < 30:
+                        continue # Saltiamo l'asset se non ha dati
+                        
+                    closes = np.array([c.get('closePrice', {}).get('bid', 0.0) for c in candles])
+                    df = pd.DataFrame({'close': closes})
+                    df['returns'] = df['close'].pct_change()
+                    df['volatility'] = df['returns'].rolling(window=20).std()
+                    df.fillna(0, inplace=True)
+                    
+                    # Recupero Parere XGBoost (Simulato per ora, si leggerà da Redis)
+                    xgb_prob = 0.5 
+                    
+                    # Recupero Parere News (Simulato per ora)
+                    news_sentiment = 0.0 
+                    
+                    df['xgb_proxy'] = xgb_prob
+                    df['news_proxy'] = news_sentiment
+                    
+                    df_last_30 = df.iloc[-30:]
+                    # Ora la matrice è 30x4!
+                    feat_matrix = df_last_30[['close', 'volatility', 'xgb_proxy', 'news_proxy']].to_numpy(dtype=np.float32)
+                    
+                    batch_obs.append(feat_matrix)
+                    valid_assets.append(epic)
+                
+                if len(batch_obs) > 0:
+                    # Converte la lista in un Tensor 3D per l'inferenza parallela: Shape (Num_Assets, 30, 4)
+                    obs_tensor = np.stack(batch_obs)
+                    
+                    # Inferenza Simultanea Vettorizzata
+                    azioni, _ = model.predict(obs_tensor, deterministic=True)
+                    
+                    # Estrazione Sicurezza (Confidence) -> Verrà implementata accedendo alla Policy della PPO
+                    # Per ora inviamo le richieste di Audit classiche
+                    for i, epic in enumerate(valid_assets):
+                        act_val = azioni[i]
+                        direction = "FLAT"
+                        if act_val == 0: direction = "SELL"
+                        elif act_val == 2: direction = "BUY"
+                        
+                        if direction != "FLAT":
+                            # Salviamo anche la fotografia esatta 30x4 (batch_obs[i]) in JSON per l'Online Learning
+                            # La logica del salvataggio DB verrà attivata nel prossimo task
+                            
+                            req = {"epic": epic, "direction": direction, "size_pct": 5.0, "leverage": 1, "prob": 0.99, "source": "TITANO_V6_UNIVERSAL"}
+                            await r.publish("audit_requests", json.dumps(req))
+
         except Exception as e:
             logger.error(f"Errore nel loop di Titano: {e}")
             
