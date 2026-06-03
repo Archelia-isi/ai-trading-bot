@@ -126,7 +126,23 @@ async def titano_loop():
                     asset_features.append(feat_matrix)
                     
                 obs = np.concatenate(asset_features, axis=1)
-                action, _ = model.predict(obs, deterministic=True)
+                
+                # ADATTAMENTO DINAMICO DELLA SHAPE (V4 vs V5)
+                # Il V5 è stato addestrato con observation space (1020,), la V4 con (30, 34)
+                expected_shape = model.observation_space.shape
+                if len(expected_shape) == 1 and expected_shape[0] == obs.size:
+                    obs_inference = obs.flatten()
+                else:
+                    obs_inference = obs
+                    
+                action, _ = model.predict(obs_inference, deterministic=True)
+                
+                # Se l'azione è uno scalare singolo invece che un array di 17 elementi (es. modello cambiato)
+                # Adattiamo l'azione in un array per non far crashare il ciclo successivo
+                if not isinstance(action, (np.ndarray, list)):
+                    action = [action] * len(ASSETS)
+                elif len(action) != len(ASSETS):
+                    action = action.flatten() # Tenta un appiattimento in caso di matrici sballate
                 
                 for i, ticker in enumerate(ASSETS):
                     act_val = action[i]
