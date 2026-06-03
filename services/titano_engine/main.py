@@ -122,7 +122,7 @@ async def titano_loop():
                     df['volatility'] = df['returns'].rolling(window=20).std()
                     df.fillna(0, inplace=True)
                     df_last_30 = df.iloc[-30:]
-                    feat_matrix = df_last_30[['close', 'volatility']].to_numpy(dtype=np.float32)
+                    feat_matrix = df_last_30[['returns', 'volatility']].to_numpy(dtype=np.float32)
                     asset_features.append(feat_matrix)
                     
                 obs = np.concatenate(asset_features, axis=1)
