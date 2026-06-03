@@ -19,7 +19,7 @@ from online_learning import perform_online_learning, schedule_nightly_learning
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Titano V4 Node (Math Engine)")
+app = FastAPI(title="Titano V5 Node (Math Engine)")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 api = CapitalComAPI()
 
@@ -85,9 +85,9 @@ async def titano_loop():
     
     try:
         if not USIAMO_LA_V6:
-            model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V4_OcchiAperti.zip")
+            model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V5_OcchiAperti.zip")
             model = PPO.load(model_path, custom_objects={'MultiAssetFeatureExtractor': MultiAssetFeatureExtractor})
-            logger.info("🧠 Modello Titano V4/V5 caricato con successo!")
+            logger.info("🧠 Modello Titano V5 caricato con successo!")
         else:
             model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V6_Universale.zip")
             # In futuro si aggiungerà il custom_object per UniversalFeatureExtractor
@@ -136,7 +136,7 @@ async def titano_loop():
                     elif act_val == 2: direction = "BUY"
                     
                     if direction != "FLAT":
-                        req = {"epic": epic, "direction": direction, "size_pct": 5.0, "leverage": 1, "prob": 0.99, "source": "TITANO_V4"}
+                        req = {"epic": epic, "direction": direction, "size_pct": 5.0, "leverage": 1, "prob": 0.99, "source": "TITANO_V5"}
                         await r.publish("audit_requests", json.dumps(req))
             else:
                 # ==========================================
@@ -202,7 +202,7 @@ async def titano_loop():
 
 @app.on_event("startup")
 async def startup_event():
-    model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V4_OcchiAperti.zip")
+    model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V5_OcchiAperti.zip")
     
     # 1. Trigger Apprendimento a Caldo (Startup)
     perform_online_learning(model_path)
@@ -215,7 +215,7 @@ async def startup_event():
 
 @app.get("/")
 def health_check():
-    return {"status": "online", "message": "Titano V4 Node Running"}
+    return {"status": "online", "message": "Titano V5 Node Running"}
 
 if __name__ == "__main__":
     import uvicorn
