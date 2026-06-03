@@ -144,6 +144,7 @@ async def titano_loop():
                 elif len(action) != len(ASSETS):
                     action = action.flatten() # Tenta un appiattimento in caso di matrici sballate
                 
+                logger.info(f"Azioni predette dal Modello: {action}")
                 for i, ticker in enumerate(ASSETS):
                     act_val = action[i]
                     epic = get_capital_epic(ticker)
