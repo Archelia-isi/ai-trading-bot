@@ -77,7 +77,7 @@ async def audit_order(req: OrderRequest):
     active_votes = []
     for src, data in list(signal_cache[real_epic].items()):
         age_minutes = (now - data["time"]).total_seconds() / 60.0
-        if src == "TITANO_V4" and age_minutes > 5:
+        if src in ["TITANO_V4", "TITANO_V5"] and age_minutes > 5:
             del signal_cache[real_epic][src]
         elif age_minutes > 120:
             del signal_cache[real_epic][src]

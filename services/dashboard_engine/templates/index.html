@@ -295,10 +295,10 @@
     <!-- 4 Quadranti Multi-Agente -->
     <div class="grid-container">
         
-        <!-- Titano V4 -->
+        <!-- Titano V5 -->
         <div class="panel">
             <div class="panel-header">
-                <span class="panel-icon">🧠</span> Titano V4 (PPO)
+                <span class="panel-icon">🧠</span> Titano V5 (PPO)
             </div>
             <div class="feed-container" id="feed-titano">
                 <!-- Injected via JS -->
@@ -406,7 +406,7 @@
                 
                 const source = data.source || '';
                 
-                if (source === 'TITANO_V4') {
+                if (source === 'TITANO_V4' || source === 'TITANO_V5') {
                     const html = `
                         <div class="card-header"><span>${time}</span> <span>${epic}</span></div>
                         <div class="card-title">Direzione: <span class="badge ${badgeCls}">${dirIT}</span></div>
