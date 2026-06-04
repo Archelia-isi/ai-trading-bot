@@ -264,6 +264,8 @@ async def titano_loop():
                         if act_val == 0: direction = "SELL"
                         elif act_val == 2: direction = "BUY"
                         
+                        logger.info(f"🧠 [TITANO V6] {epic} -> {direction} (Confidence: {confidence*100:.1f}%)")
+                        
                         if direction != "FLAT":
                             # Calcolo Size Dinamica: Max 10% del capitale. Se confidence 90% -> 9.0%, se 51% -> 5.1%
                             dynamic_size = round(confidence * 10.0, 2)
