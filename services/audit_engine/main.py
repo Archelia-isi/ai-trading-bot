@@ -66,6 +66,11 @@ async def portfolio_monitor_loop():
                     })
                     current_pnl_usd += upl
                     
+                invested_capital = margin_info.get("margin", 0.0)
+                available_capital = margin_info.get("available", portfolio_state["total_capital"])
+                
+                portfolio_state["invested_capital"] = invested_capital
+                portfolio_state["available_capital"] = available_capital
                 portfolio_state["open_positions"] = open_positions
                 portfolio_state["current_pnl_pct"] = (current_pnl_usd / portfolio_state["total_capital"] * 100) if portfolio_state["total_capital"] > 0 else 0.0
             
