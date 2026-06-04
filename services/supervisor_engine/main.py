@@ -141,7 +141,9 @@ async def redis_listener():
                     
                     for p in open_positions:
                         epic = p.get('epic')
-                        pnl = p.get('pnl_pct', 0.0)
+                        # Salviamo l'asset_move_pct (reale movimento di mercato senza leva) per l'Esattore
+                        # Se non esiste, fallback sul pnl_pct
+                        pnl = p.get('asset_move_pct', p.get('pnl_pct', 0.0))
                         new_open_epics.add(epic)
                         active_trades_pnl[epic] = pnl # Aggiorna l'ultimo PnL noto
                         
