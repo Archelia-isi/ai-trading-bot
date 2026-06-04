@@ -123,7 +123,7 @@ async def titano_loop():
             policy_kwargs = dict(
                 features_extractor_class=EstrazioneCaratteristiche,
                 features_extractor_kwargs=dict(dimensione_caratteristiche=2048),
-                net_arch=dict(pi=[2048, 2048], vf=[2048, 2048])
+                net_arch=dict(pi=[2048, 2048, 1024], vf=[2048, 2048, 1024])
             )
             
             model = PPO.load(
