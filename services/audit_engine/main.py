@@ -22,7 +22,7 @@ portfolio_state = {
     "is_trading_locked": False
 }
 
-INITIAL_CAPITAL = 89000.0 # Capitale Iniziale al lancio del software
+INITIAL_CAPITAL = 89500.0 # Capitale Iniziale al lancio del software
 
 async def portfolio_monitor_loop():
     logger.info("Avviato Monitor Portfolio dell'Esecutore (per la Dashboard)...")
