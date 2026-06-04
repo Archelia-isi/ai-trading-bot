@@ -29,17 +29,31 @@ live_candles = {}
 historical_candles = {}
 
 async def prefill_historical_data(epic: str):
-    """Chiama le REST API per precaricare le prime 30 candele, in modo da avere subito la serie temporale piena."""
+    """Precarica le ultime 30 candele a 1 minuto via REST per saltare il warm-up di 30 minuti."""
     try:
-        # Usiamo l'api esistente per scaricare le ultime 30 candele (risoluzione oraria o minuta, per ora simuliamo)
-        # Nelle API reali Capital.com si usa la REST per il bootstrap
-        prices = api.get_historical_prices(epic, hours=1) # Se fosse a minuto servirebbe resolution=MINUTE
+        # Chiamata REST manuale a MINUTO (Capital API base url)
+        url = f"{api.base_url}/prices/{epic}?resolution=MINUTE&max=30"
+        import requests
+        response = requests.get(url, headers=api._get_headers(with_auth=True), timeout=10)
         
-        # Per ora inizializziamo a vuoto se non c'è, ma in prod si popola!
-        if epic not in historical_candles:
+        if response.status_code == 200:
+            prices = response.json().get('prices', [])
+            # prices è una lista di dict { snapshotTime: ..., openPrice: {bid}, highPrice, lowPrice, closePrice }
+            candles = []
+            for p in prices:
+                o = p.get('openPrice', {}).get('bid', 0.0)
+                h = p.get('highPrice', {}).get('bid', 0.0)
+                l = p.get('lowPrice', {}).get('bid', 0.0)
+                c = p.get('closePrice', {}).get('bid', 0.0)
+                candles.append({"open": o, "high": h, "low": l, "close": c})
+                
+            historical_candles[epic] = candles
+            logger.info(f"📊 [Memoria] Buffer riempito ({len(candles)}/30 candele) per {epic}")
+        else:
             historical_candles[epic] = []
-        logger.info(f"📊 [Memoria] Inizializzato buffer per {epic}")
+            logger.warning(f"⚠️ [Memoria] Impossibile scaricare storico per {epic}, warm-up richiesto.")
     except Exception as e:
+        historical_candles[epic] = []
         logger.error(f"Errore prefill per {epic}: {e}")
 
 def process_tick(epic: str, price: float):
