@@ -218,17 +218,8 @@ async def redis_listener():
                             is_confirmed = True
                             action_suggested = "SELL"
                             
-                        if is_confirmed:
-                            payload_for_gemini = {
-                                "epic": ticker,
-                                "news_title": f"Segugio: {data['title']} (Sentiment: {data['label']})",
-                                "news_sentiment": data['label'],
-                                "news_score": data['score'],
-                                "prob": prob, "source": "XGBOOST",
-                                "direction": action_suggested
-                            }
-                            logger.info(f"✅ Mercato APERTO per {ticker}. Invio diretto a Gemini per esecuzione gap: {payload_for_gemini}")
-                            await redis_client.publish("audit_requests", json.dumps(payload_for_gemini))
+                            logger.info(f"✅ Mercato APERTO per {ticker}. Probabilità XGBoost calcolata: {prob*100:.2f}%. (Nessun trade autonomo inviato, Titano V6 leggerà questo dato)")
+                            await redis_client.set(f"xgboost_prob:{ticker}", prob, ex=3600)
                             
                     except Exception as e:
                         logger.error(f"Errore NLP Verification su XGBoost: {e}")
@@ -265,30 +256,13 @@ async def portfolio_shield_loop():
                     loop = asyncio.get_event_loop()
                     prob = await loop.run_in_executor(pool_shield, run_xgboost_on_prices, prices)
                     
+                    # Salvataggio continuo del Proxy XGBoost per Titano V6
+                    await redis_client.set(f"xgboost_prob:{epic}", prob, ex=3600)
+                    
                     if prob <= 0.35:
-                        action = "SELL"
-                        alert = {
-                            "epic": epic,
-                            "news_title": "Allarme Scudo: Crollo Tecnico Imminente!",
-                            "news_sentiment": "NEGATIVE",
-                            "news_score": 1.0,
-                            "prob": prob, "source": "XGBOOST",
-                            "direction": action
-                        }
-                        logger.warning(f"🛡️ SCUDO ATTIVO! Crollo rilevato su {epic}: Prob Rialzo {prob*100:.2f}%. Invio SELL_WARNING (Short/Chiusura).")
-                        await redis_client.publish("audit_requests", json.dumps(alert))
+                        logger.warning(f"🛡️ SCUDO ATTIVO! Crollo rilevato su {epic}: Prob Rialzo {prob*100:.2f}%. (Solo alert log, Titano deciderà se chiudere).")
                     elif prob >= GLOBAL_CONFIG['hunter_long']:
-                        action = "BUY"
-                        alert = {
-                            "epic": epic,
-                            "news_title": "Allarme Scudo: Spike Tecnico Imminente!",
-                            "news_sentiment": "POSITIVE",
-                            "news_score": 1.0,
-                            "prob": prob, "source": "XGBOOST",
-                            "direction": action
-                        }
-                        logger.info(f"🛡️ SCUDO ATTIVO! Rally rilevato su {epic}: Prob Rialzo {prob*100:.2f}%. Invio BUY_WARNING.")
-                        await redis_client.publish("audit_requests", json.dumps(alert))
+                        logger.info(f"🛡️ SCUDO ATTIVO! Rally rilevato su {epic}: Prob Rialzo {prob*100:.2f}%. (Solo alert log, Titano deciderà se chiudere/aprire).")
                         
                 except Exception as e:
                     logger.warning(f"Errore Scudo su {epic}: {e}")
@@ -358,29 +332,14 @@ async def market_hunter_loop():
                     prob = res['prob']
                     epic = res['epic']
                     
+                    # Salvataggio del valore su Redis per la matrice di Titano V6
+                    await redis_client.set(f"xgboost_prob:{epic}", prob, ex=3600)
+                    
                     if prob >= GLOBAL_CONFIG['hunter_long']:
-                        alert = {
-                            "epic": epic,
-                            "news_title": "Cacciatore: Occasione Tecnica Pura (LONG)",
-                            "news_sentiment": "POSITIVE",
-                            "news_score": 1.0,
-                            "prob": prob, "source": "XGBOOST",
-                            "direction": "BUY"
-                        }
-                        logger.info(f"🏹 CACCIATORE: Trova LONG su {epic} (Prob {prob*100:.2f}%). Invio.")
-                        await redis_client.publish("audit_requests", json.dumps(alert))
+                        logger.info(f"🏹 CACCIATORE: Trova LONG su {epic} (Prob {prob*100:.2f}%). Salvato in cache per Titano V6.")
                         
                     elif prob <= GLOBAL_CONFIG['hunter_short']:
-                        alert = {
-                            "epic": epic,
-                            "news_title": "Cacciatore: Occasione Tecnica Pura (SHORT)",
-                            "news_sentiment": "NEGATIVE",
-                            "news_score": 1.0,
-                            "prob": prob, "source": "XGBOOST",
-                            "direction": "SELL"
-                        }
-                        logger.info(f"🏹 CACCIATORE: Trova SHORT su {epic} (Prob {prob*100:.2f}%). Invio.")
-                        await redis_client.publish("audit_requests", json.dumps(alert))
+                        logger.info(f"🏹 CACCIATORE: Trova SHORT su {epic} (Prob {prob*100:.2f}%). Salvato in cache per Titano V6.")
                 
                 # Pausa Anti-Ban per respirare tra un blocco e l'altro
                 await asyncio.sleep(3)
@@ -465,17 +424,8 @@ async def waiting_room_loop():
                                 is_confirmed = True
                                 action_suggested = "SELL"
                                 
-                            if is_confirmed:
-                                final_payload = {
-                                    "epic": ticker,
-                                    "news_title": f"Segugio: {news_title} (Sentiment: {news_label})",
-                                    "news_sentiment": news_label,
-                                    "news_score": news_score,
-                                    "prob": prob, "source": "XGBOOST",
-                                    "direction": action_suggested
-                                }
-                                logger.info(f"🚀 RI-VALUTAZIONE SUPERATA! Invio a Gemini per esecuzione gap: {final_payload}")
-                                await redis_client.publish("audit_requests", json.dumps(final_payload))
+                                logger.info(f"🚀 RI-VALUTAZIONE WAITING ROOM SUPERATA per {ticker}! Prob: {prob*100:.2f}%. (Salvata su Redis per Titano V6).")
+                                await redis_client.set(f"xgboost_prob:{ticker}", prob, ex=3600)
                             else:
                                 logger.warning(f"❌ Ri-valutazione fallita per {ticker}. La notizia non è più supportata dai prezzi attuali. Scartata.")
                                 

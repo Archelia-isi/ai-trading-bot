@@ -140,25 +140,14 @@ async def scan_feed(feed_info, seen_articles):
                 label = res['label'].upper()
                 score = res['score']
                 
-            # Soglia di confidenza al 75% per evitare rumore
+            # Salvataggio continuo del Sentiment su Redis per Titano V6 (scade in 24 ore)
+            prefix = "cryptobert_sentiment" if epic in crypto_epics else "finbert_sentiment"
+            redis_client.set(f"{prefix}:{epic}", float(score), ex=86400)
+            
+            # Soglia di confidenza al 75% per evitare rumore nei log
             if score >= 0.75 and label != "NEUTRAL":
-                logger.info(f"[{source_name}] 🚨 BOMBA SU {epic}: {title} [{label} {score}]")
-                
-                direction = "BUY" if label == "POSITIVE" else "SELL"
-                
-                payload = {
-                    "epic": epic,
-                    "direction": direction,
-                    "size_pct": 2.0, # Dimensione minore per i trade NLP puri
-                    "leverage": 1,
-                    "prob": float(score),
-                    "source": "NLP_ENGINE",
-                    "title": title
-                }
-                
-                # Invia direttamente all'Audit Engine come richiesta
-                redis_client.publish("audit_requests", json.dumps(payload))
-                
+                logger.info(f"[{source_name}] 🚨 BOMBA SU {epic}: {title} [{label} {score}] -> Salvato su Redis per Titano V6")
+
     except Exception as e:
         logger.error(f"Errore nell'Agente Segugio {source_name}: {e}")
 
