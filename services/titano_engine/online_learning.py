@@ -107,10 +107,14 @@ class ExperienceReplayEnv(gym.Env):
             reward = -self.current_pnl # Inverso
         elif action == 1 and self.current_pnl < 0:
             reward = self.current_pnl * 2.0 # Penalità doppia se ha deciso di Holdare un asset in perdita
+        elif action == 1 and self.current_pnl > 0:
+            reward = -(self.current_pnl * 1.5) # FOMO: Penalità severa per essere rimasti fermi perdendo un'occasione di profitto
             
-        # Logica "Day Trading Spregiudicato": Le perdite bruciano il triplo, così impara a tagliare subito!
+        # Logica "Day Trading Spregiudicato" (Rischio/Rendimento bilanciato)
         if reward < 0:
-            reward *= 3.0
+            reward *= 3.0 # Le perdite e le mancate occasioni bruciano il triplo, forzando l'IA all'azione
+        elif reward > 0:
+            reward *= 4.0 # I profitti incassati esplodono x4! Così l'IA capisce che il rischio vale l'azione.
             
         self.current_trade_idx += 1
         return self.current_obs, float(reward), True, False, {}
