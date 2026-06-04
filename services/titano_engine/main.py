@@ -12,6 +12,7 @@ import torch.nn as nn
 import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+import gdown
 
 from core.capital_api import CapitalComAPI
 from online_learning import perform_online_learning, schedule_nightly_learning
@@ -243,12 +244,27 @@ async def titano_loop():
             
         await asyncio.sleep(60)
 
+def download_model_from_drive(model_path: str):
+    file_id = "1NCRjilt5hsysIU2rHd6RsOzjZY2KqvQh"
+    url = f"https://drive.google.com/uc?id={file_id}"
+    logger.info(f"Avvio download del modello V6 da Google Drive ({url})...")
+    try:
+        gdown.download(url, model_path, quiet=False)
+        logger.info("Download del modello completato con successo!")
+    except Exception as e:
+        logger.error(f"Errore durante il download del modello: {e}")
+
 @app.on_event("startup")
 async def startup_event():
-    model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V5_OcchiAperti.zip")
+    model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V6_Universale.zip")
+    
+    # 0. Download del modello pesante da Google Drive (se non esiste)
+    if USIAMO_LA_V6 and not os.path.exists(model_path):
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        download_model_from_drive(model_path)
     
     # 1. Start-up: Online Learning dai trade passati
-    perform_online_learning()
+    # perform_online_learning()
     
     # 2. Schedulazione Notturna (Mezzanotte)
     schedule_nightly_learning()
