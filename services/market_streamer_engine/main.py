@@ -91,7 +91,7 @@ async def ws_handler(socket_id: int, role: str, epics_list: list, r: aioredis.Re
         'X-CAP-API-KEY': str(api.api_key)
     }
     
-    uri = "wss://demo-api-streaming-capital.backend-capital.com/connect"
+    uri = "wss://api-streaming-capital.backend-capital.com/connect"
     logger.info(f"🟢 [Socket {socket_id} - {role}] Avvio connessione WebSocket (Radar={is_radar})...")
     
     # Pre-caricamento storico REST
