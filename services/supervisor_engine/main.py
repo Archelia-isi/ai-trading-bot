@@ -5,6 +5,8 @@ import logging
 import redis.asyncio as aioredis
 import google.generativeai as genai
 from core.database import DatabaseManager
+from core.capital_api import CapitalComAPI
+from datetime import datetime, timezone
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
 logger = logging.getLogger(__name__)
@@ -22,15 +24,79 @@ temp_signals = {}    # epic -> {news, prob}
 temp_decisions = {}  # epic -> {reasoning}
 active_trades_pnl = {} # epic -> last known pnl
 
+api = CapitalComAPI()
+api.authenticate()
+
 async def generate_protocol(epic: str, direction: str, votes_mean: float, pnl: float):
     """(Disattivato) La generazione testuale di Gemini è stata sostituita dalla Cross-Pollination numerica."""
     pass
 
 async def evaluation_loop():
-    """Ciclo che verifica se i trade in DB si sono chiusi (gestito in tempo reale dal listener)."""
-    logger.info("Avviato Ciclo di Valutazione Trade (Cross-Pollination Numerica)...")
+    """Ciclo che agisce da 'Esattore del Day Trading' per punire stagnazione, avidità e testardaggine."""
+    logger.info("Avviato Esattore del Day Trading (Valutazione Attiva dei Trade Aperti)...")
     while True:
-        await asyncio.sleep(60)
+        await asyncio.sleep(300) # Controlla ogni 5 minuti
+        
+        try:
+            unevaluated = db.get_unevaluated_trades()
+            if not unevaluated:
+                continue
+                
+            now = datetime.now(timezone.utc)
+            
+            for t in unevaluated:
+                epic = t['epic']
+                trade_id = t['id']
+                
+                # Se non abbiamo il PnL corrente (non è nelle posizioni aperte), ignoriamo per ora
+                if epic not in active_trades_pnl:
+                    continue
+                    
+                current_pnl = active_trades_pnl[epic]
+                
+                # opened_at potrebbe essere naive o timezone-aware.
+                # Assumiamo sia UTC dal DB.
+                opened_at = t['opened_at']
+                if opened_at.tzinfo is None:
+                    opened_at = opened_at.replace(tzinfo=timezone.utc)
+                    
+                hours_alive = (now - opened_at).total_seconds() / 3600.0
+                
+                penalty_pnl = None
+                reason = ""
+                
+                # Regola 6: Rischio Gap Dinamico (Meno di 30 min alla chiusura)
+                is_crypto = any(c in epic for c in ["BTC", "ETH", "SOL", "DOGE", "XRP"])
+                if not is_crypto:
+                    if api.is_market_closing_soon(epic, threshold_minutes=30):
+                        penalty_pnl = -5.0
+                        reason = "Tassa Overnight (Rischio Gap a mercato chiuso)"
+                
+                # Se non ha scattato il rischio Gap, controlliamo se ha superato le 4 ore (Time Decay)
+                if penalty_pnl is None and hours_alive >= 4.0:
+                    if -1.0 <= current_pnl <= 1.0:
+                        penalty_pnl = -5.0
+                        reason = "Stagnazione Piatta (Sprecato margine per > 4 ore)"
+                    elif -2.0 <= current_pnl < -1.0:
+                        penalty_pnl = -8.0
+                        reason = "Sanguinamento Lento (Hold in perdita per > 4 ore)"
+                    elif 1.0 < current_pnl <= 2.0:
+                        penalty_pnl = -2.0
+                        reason = "Profitto Lento (Mancato Incasso, troppo tempo per poco gain)"
+                    elif current_pnl > 2.0:
+                        penalty_pnl = -5.0
+                        reason = "Avidità Estrema (Oltre +2% in 4 ore senza vendere)"
+                    elif current_pnl < -2.0:
+                        penalty_pnl = -10.0
+                        reason = "Testardaggine Suicida (Oltre -2% in 4 ore senza tagliare)"
+                        
+                if penalty_pnl is not None:
+                    logger.warning(f"⚖️ [ESATTORE] Trade {trade_id} ({epic}) sanzionato! Motivo: {reason} | PnL reale: {current_pnl:.2f}% | PnL virtuale: {penalty_pnl}%")
+                    db.mark_trade_evaluated(trade_id, penalty_pnl)
+                    # Una volta sanzionato e valutato, non verrà più addestrato stanotte per altri motivi.
+                    
+        except Exception as e:
+            logger.error(f"Errore nell'Esattore del Day Trading: {e}")
 
 async def redis_listener():
     logger.info("Avviato Supervisore Silenzioso (Redis Listener)...")
