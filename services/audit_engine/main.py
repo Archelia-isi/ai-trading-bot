@@ -83,6 +83,24 @@ async def portfolio_monitor_loop():
                 total_historic_pnl_usd = portfolio_state["total_capital"] - INITIAL_CAPITAL
                 portfolio_state["historic_pnl_usd"] = total_historic_pnl_usd
                 portfolio_state["historic_pnl_pct"] = (total_historic_pnl_usd / INITIAL_CAPITAL) * 100
+                
+                # Calcolo PnL Giornaliero Capitalizzato (Daily Compounding)
+                try:
+                    # Legge il capitale di inizio giornata da Redis. Se non c'è, usa INITIAL_CAPITAL (come richiesto per oggi)
+                    redis_daily_cap = await r.get("daily_starting_capital")
+                    if redis_daily_cap:
+                        daily_base = float(redis_daily_cap)
+                    else:
+                        daily_base = INITIAL_CAPITAL
+                except:
+                    daily_base = INITIAL_CAPITAL
+                    
+                if daily_base <= 0: daily_base = 1.0 # Prevenzione div/0
+                
+                portfolio_state["daily_starting_capital"] = daily_base
+                daily_pnl_usd = portfolio_state["total_capital"] - daily_base
+                portfolio_state["daily_pnl_usd"] = daily_pnl_usd
+                portfolio_state["daily_pnl_pct"] = (daily_pnl_usd / daily_base) * 100
             
             # Pubblica su Redis per la Dashboard
             await r.publish("portfolio_status", json.dumps(portfolio_state))
