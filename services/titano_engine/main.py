@@ -141,121 +141,59 @@ async def titano_loop():
     r = await aioredis.from_url(REDIS_URL)
     api.authenticate()
 
-    while True:
-        try:
-            logger.info("🔄 Esecuzione Titano Live Inference...")
-            
-            if not USIAMO_LA_V6:
-                # ==========================================
-                # LOGICA VECCHIA V4/V5 (MATRICE UNICA 17 ASSET)
-                # ==========================================
-                asset_features = []
-                for ticker in ASSETS:
-                    epic = get_capital_epic(ticker)
-                    candles = api.get_historical_prices(epic, max_candles=50, resolution="MINUTE")
-                    if not candles or len(candles) < 30:
-                        closes = np.zeros(50)
-                    else:
-                        closes = np.array([c.get('closePrice', {}).get('bid', 0.0) for c in candles])
-                    
-                    df = pd.DataFrame({'close': closes})
-                    df['returns'] = df['close'].pct_change()
-                    df['volatility'] = df['returns'].rolling(window=20).std()
-                    df.fillna(0, inplace=True)
-                    df_last_30 = df.iloc[-30:]
-                    feat_matrix = df_last_30[['returns', 'volatility']].to_numpy(dtype=np.float32)
-                    asset_features.append(feat_matrix)
-                    
-                obs = np.concatenate(asset_features, axis=1)
+    pubsub = r.pubsub()
+    await pubsub.subscribe("market_updates")
+    
+    logger.info("📡 In attesa di dati in streaming da Market Streamer Engine (V6)...")
+    
+    async for message in pubsub.listen():
+        if message['type'] == 'message':
+            try:
+                data = json.loads(message['data'])
+                # data è un dizionario: { epic: [30 candele], epic2: [30 candele] }
                 
-                # ADATTAMENTO DINAMICO DELLA SHAPE (V4 vs V5)
-                # Il V5 è stato addestrato con observation space (1020,), la V4 con (30, 34)
-                expected_shape = model.observation_space.shape
-                if len(expected_shape) == 1 and expected_shape[0] == obs.size:
-                    obs_inference = obs.flatten()
-                else:
-                    obs_inference = obs
-                    
-                action, _ = model.predict(obs_inference, deterministic=True)
-                
-                # Se l'azione è uno scalare singolo invece che un array di 17 elementi (es. modello cambiato)
-                # Adattiamo l'azione in un array per non far crashare il ciclo successivo
-                if not isinstance(action, (np.ndarray, list)):
-                    action = [action] * len(ASSETS)
-                elif len(action) != len(ASSETS):
-                    action = action.flatten() # Tenta un appiattimento in caso di matrici sballate
-                
-                logger.info(f"Azioni predette dal Modello: {action}")
-                for i, ticker in enumerate(ASSETS):
-                    act_val = action[i]
-                    epic = get_capital_epic(ticker)
-                    direction = "FLAT"
-                    if act_val == 0: direction = "SELL"
-                    elif act_val == 2: direction = "BUY"
-                    
-                    if direction != "FLAT":
-                        req = {"epic": epic, "direction": direction, "size_pct": 5.0, "leverage": 1, "prob": 0.99, "source": "TITANO_V5"}
-                        await r.publish("audit_requests", json.dumps(req))
-            else:
-                # ==========================================
-                # NUOVA LOGICA V6 UNIVERSALE (MULTIPROCESSO)
-                # ==========================================
                 batch_obs = []
                 valid_assets = []
                 
-                for ticker in ASSETS:
-                    epic = get_capital_epic(ticker)
-                    candles = api.get_historical_prices(epic, max_candles=50, resolution="MINUTE")
-                    if not candles or len(candles) < 30:
-                        continue # Saltiamo l'asset se non ha dati
+                for epic, candles in data.items():
+                    if len(candles) < 30: 
+                        continue
                         
-                    closes = np.array([c.get('closePrice', {}).get('bid', 0.0) for c in candles])
+                    closes = np.array([c.get('close', 0.0) for c in candles])
                     df = pd.DataFrame({'close': closes})
                     df['returns'] = df['close'].pct_change()
                     df['volatility'] = df['returns'].rolling(window=20).std()
                     df.fillna(0, inplace=True)
                     
-                    # Recupero Parere XGBoost
                     try:
                         xgb_val = await r.get(f"xgboost_prob:{epic}")
                         xgb_prob = float(xgb_val) if xgb_val else 0.5
-                    except:
-                        xgb_prob = 0.5
+                    except: xgb_prob = 0.5
                     
-                    # Recupero Parere News (FinBERT o CryptoBERT)
                     try:
                         is_crypto = any(c in epic for c in ["BTC", "ETH", "SOL", "DOGE", "XRP"])
-                        if is_crypto:
-                            news_val = await r.get(f"cryptobert_sentiment:{epic}")
-                        else:
-                            news_val = await r.get(f"finbert_sentiment:{epic}")
+                        news_val = await r.get(f"cryptobert_sentiment:{epic}" if is_crypto else f"finbert_sentiment:{epic}")
                         news_sentiment = float(news_val) if news_val else 0.0
-                    except:
-                        news_sentiment = 0.0
+                    except: news_sentiment = 0.0
                     
                     df['xgb_proxy'] = xgb_prob
                     df['news_proxy'] = news_sentiment
                     
                     df_last_30 = df.iloc[-30:]
-                    # Ora la matrice è 30x4! Usiamo 'returns' come Prezzo_Norm dell'addestramento!
                     feat_matrix = df_last_30[['returns', 'volatility', 'xgb_proxy', 'news_proxy']].to_numpy(dtype=np.float32)
                     
                     batch_obs.append(feat_matrix)
                     valid_assets.append(epic)
                 
                 if len(batch_obs) > 0:
-                    # Converte la lista in un Tensor 3D per l'inferenza parallela: Shape (Num_Assets, 30, 4)
                     obs_tensor = np.stack(batch_obs)
-                    
-                    # Inferenza Simultanea Vettorizzata
                     azioni, _ = model.predict(obs_tensor, deterministic=True)
                     
-                    # Estrazione Sicurezza (Confidence)
                     with torch.no_grad():
                         obs_tensor_th = torch.as_tensor(obs_tensor, device=model.device)
                         distribution = model.policy.get_distribution(obs_tensor_th)
                         probs = distribution.distribution.probs.cpu().numpy()
-                    
+                        
                     for i, epic in enumerate(valid_assets):
                         act_val = azioni[i]
                         confidence = float(probs[i][act_val])
@@ -267,24 +205,15 @@ async def titano_loop():
                         logger.info(f"🧠 [TITANO V6] {epic} -> {direction} (Confidence: {confidence*100:.1f}%)")
                         
                         if direction != "FLAT":
-                            # Calcolo Size Dinamica: Max 10% del capitale. Se confidence 90% -> 9.0%, se 51% -> 5.1%
                             dynamic_size = round(confidence * 10.0, 2)
-                            
-                            req = {
-                                "epic": epic, 
-                                "direction": direction, 
-                                "size_pct": dynamic_size, 
-                                "leverage": 1, 
-                                "prob": confidence, 
-                                "source": "TITANO_V6_SUPREMO"
-                            }
-                            # BYPASS AUDIT (Carta Bianca): Invia direttamente all'Esecutore
+                            req = {"epic": epic, "direction": direction, "size_pct": dynamic_size, "leverage": 1, "prob": confidence, "source": "TITANO_V6_SUPREMO"}
                             await r.publish("execution_requests", json.dumps(req))
-
-        except Exception as e:
-            logger.error(f"Errore nel loop di Titano: {e}")
-            
-        await asyncio.sleep(60)
+                            await r.publish("audit_requests", json.dumps(req))
+                        else:
+                            req_ui = {"epic": epic, "direction": "FLAT", "size_pct": 0, "prob": confidence, "source": "TITANO_V6_SUPREMO"}
+                            await r.publish("audit_requests", json.dumps(req_ui))
+            except Exception as e:
+                logger.error(f"Errore inferenza streaming: {e}")
 
 def download_model_from_drive(model_path: str):
     file_id = "1NCRjilt5hsysIU2rHd6RsOzjZY2KqvQh"
