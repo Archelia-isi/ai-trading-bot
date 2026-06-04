@@ -346,12 +346,14 @@
                     <th>Direzione</th>
                     <th>Dimensione</th>
                     <th>Leva</th>
+                    <th>Margine ($)</th>
+                    <th>Controvalore ($)</th>
                     <th>Profitti/Perdite %</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td colspan="5" style="text-align: center; color: var(--text-muted);">Nessuna posizione aperta</td>
+                    <td colspan="7" style="text-align: center; color: var(--text-muted);">Nessuna posizione aperta</td>
                 </tr>
             </tbody>
         </table>
@@ -476,7 +478,7 @@
                 
                 const tbody = document.querySelector('#table-positions tbody');
                 if (data.open_positions.length === 0) {
-                    const emptyMsg = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nessuna posizione aperta</td></tr>';
+                    const emptyMsg = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Nessuna posizione aperta</td></tr>';
                     if (tbody.innerHTML !== emptyMsg) tbody.innerHTML = emptyMsg;
                 } else {
                     let newHtml = '';
@@ -489,6 +491,8 @@
                                 <td><span class="badge ${isBuy ? 'buy' : 'sell'}">${isBuy ? 'RIALZISTA' : 'RIBASSISTA'}</span></td>
                                 <td>${pos.size.toFixed(2)}%</td>
                                 <td>${pos.leverage}x</td>
+                                <td>$${(pos.margin_usd || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                <td>$${(pos.notional_usd || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                 <td class="${pnlCls}"><strong>${pos.pnl_pct > 0 ? '+' : ''}${pos.pnl_pct.toFixed(2)}%</strong></td>
                             </tr>
                         `;

@@ -51,14 +51,19 @@ async def portfolio_monitor_loop():
                     upl = pos.get('upl', 0.0)
                     
                     size_pct = 0.0
+                    notional_usd = size_abs * market.get('offer', 1)
+                    margin_usd = notional_usd / leverage
+                    
                     if portfolio_state["total_capital"] > 0:
-                        size_pct = ((size_abs * market.get('offer', 1)) / leverage / portfolio_state["total_capital"]) * 100
+                        size_pct = (notional_usd / leverage / portfolio_state["total_capital"]) * 100
                         
                     open_positions.append({
                         "epic": epic,
                         "direction": direction,
                         "size": size_pct,
                         "leverage": leverage,
+                        "margin_usd": margin_usd,
+                        "notional_usd": notional_usd,
                         "pnl_pct": (upl / portfolio_state["total_capital"] * 100) if portfolio_state["total_capital"] > 0 else 0.0
                     })
                     current_pnl_usd += upl
