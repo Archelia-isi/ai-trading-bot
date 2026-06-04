@@ -100,6 +100,7 @@ class CapitalComAPI:
             if response.status_code == 200:
                 accounts = response.json().get('accounts', [])
                 if accounts:
+                    bal = accounts[0].get('balance', {})
                     return {
                         "equity": float(bal.get('balance', 0.0)),
                         "available": float(bal.get('available', 0.0)),
