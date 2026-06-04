@@ -45,11 +45,8 @@ async def portfolio_monitor_loop():
                     direction = pos.get('direction', 'BUY')
                     size_abs = pos.get('size', 0)
                     
-                    margin_factor = market.get('marginFactor')
-                    if margin_factor and float(margin_factor) > 0:
-                        leverage = int(round(1 / float(margin_factor)))
-                    else:
-                        leverage = market.get('leverage', 1)
+                    # La leva su Capital.com si trova nell'oggetto 'position'
+                    leverage = pos.get('leverage', 1)
                         
                     upl = pos.get('upl', 0.0)
                     
