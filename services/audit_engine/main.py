@@ -120,28 +120,26 @@ async def execution_manager_loop():
                                 await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Skip SELL (Nessuna Posizione)", "status": "REJECTED"}))
                         
                         elif direction == "BUY":
-                            if existing_pos:
-                                logger.info(f"Posizione già aperta su {epic}. Ignoro il segnale di BUY ripetuto.")
-                                await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Skip BUY (Posizione Esistente)", "status": "REJECTED"}))
-                            else:
-                                balance = api.get_account_balance()
-                                cash_to_invest = balance * (size_pct / 100.0)
+                            action_str = "BUY (Accumulo)" if existing_pos else "BUY"
+                            
+                            balance = api.get_account_balance()
+                            cash_to_invest = balance * (size_pct / 100.0)
+                            
+                            price = api.get_market_price(epic)
+                            if price > 0:
+                                qty = cash_to_invest / price
+                                min_size = api.get_min_deal_size(epic)
+                                if qty < min_size:
+                                    qty = min_size
                                 
-                                price = api.get_market_price(epic)
-                                if price > 0:
-                                    qty = cash_to_invest / price
-                                    min_size = api.get_min_deal_size(epic)
-                                    if qty < min_size:
-                                        qty = min_size
-                                    
-                                    logger.info(f"Esecuzione BUY su {epic} | Qty: {qty} (Investimento stimato: €{cash_to_invest:.2f})")
-                                    res = api.place_order(epic=epic, direction="BUY", size=qty)
-                                    if "dealReference" in res:
-                                        logger.info(f"✅ Ordine Eseguito con successo su {epic}!")
-                                        await r.publish("audit_actions", json.dumps({"epic": epic, "action": f"BUY {qty}", "status": "APPROVED"}))
-                                    else:
-                                        logger.error(f"❌ Fallimento Esecuzione su {epic}: {res}")
-                                        await r.publish("audit_actions", json.dumps({"epic": epic, "action": f"Fallimento BUY", "status": "REJECTED"}))
+                                logger.info(f"Esecuzione {action_str} su {epic} | Qty: {qty} (Investimento stimato: ${cash_to_invest:.2f})")
+                                res = api.place_order(epic=epic, direction="BUY", size=qty)
+                                if "dealReference" in res:
+                                    logger.info(f"✅ Ordine {action_str} Eseguito con successo su {epic}!")
+                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "APPROVED"}))
+                                else:
+                                    logger.error(f"❌ Ordine {action_str} Fallito su {epic}: {res}")
+                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "ERROR"}))
                     except Exception as e:
                         logger.error(f"Errore durante l'elaborazione dell'ordine: {e}")
         except Exception as e:

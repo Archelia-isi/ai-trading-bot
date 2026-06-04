@@ -105,6 +105,12 @@ class ExperienceReplayEnv(gym.Env):
             reward = self.current_pnl # Rafforza se PnL positivo, punisce se PnL negativo
         elif (action == 0 and self.expected_action == 2) or (action == 2 and self.expected_action == 0):
             reward = -self.current_pnl # Inverso
+        elif action == 1 and self.current_pnl < 0:
+            reward = self.current_pnl * 2.0 # Penalità doppia se ha deciso di Holdare un asset in perdita
+            
+        # Logica "Day Trading Spregiudicato": Le perdite bruciano il triplo, così impara a tagliare subito!
+        if reward < 0:
+            reward *= 3.0
             
         self.current_trade_idx += 1
         return self.current_obs, float(reward), True, False, {}

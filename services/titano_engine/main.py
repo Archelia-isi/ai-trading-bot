@@ -24,6 +24,21 @@ app = FastAPI(title="Titano V5 Node (Math Engine)")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 api = CapitalComAPI()
 
+portfolio_state_cache = {"open_positions": []}
+
+async def portfolio_sync_loop():
+    logger.info("Avviato sync del portafoglio per Titano...")
+    r = await aioredis.from_url(REDIS_URL)
+    pubsub = r.pubsub()
+    await pubsub.subscribe("portfolio_status")
+    async for message in pubsub.listen():
+        if message['type'] == 'message':
+            try:
+                data = json.loads(message['data'])
+                portfolio_state_cache["open_positions"] = data.get("open_positions", [])
+            except Exception as e:
+                logger.error(f"Errore lettura portfolio_status in Titano: {e}")
+
 # --- CLASSE CUSTOM NECESSARIA PER CARICARE IL MODELLO ---
 class MultiAssetFeatureExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 1024):
@@ -202,14 +217,21 @@ async def titano_loop():
                         if act_val == 0: direction = "SELL"
                         elif act_val == 2: direction = "BUY"
                         
-                        logger.info(f"🧠 [TITANO V6] {epic} -> {direction} (Confidence: {confidence*100:.1f}%)")
+                        
+                        is_owned = any(p.get("epic") == epic for p in portfolio_state_cache.get("open_positions", []))
                         
                         if direction != "FLAT":
                             dynamic_size = round(confidence * 10.0, 2)
-                            req = {"epic": epic, "direction": direction, "size_pct": dynamic_size, "leverage": 1, "prob": confidence, "source": "TITANO_V6_SUPREMO"}
+                            
+                            # Se lo possediamo già e Titano dice BUY, è un ACCUMULO.
+                            action_log = "ACCUMULO (Pyramiding)" if is_owned else "NUOVA POSIZIONE"
+                            logger.info(f"🧠 [TITANO V6] {epic} -> {direction} ({action_log}) (Confidence: {confidence*100:.1f}%)")
+                            
+                            req = {"epic": epic, "direction": direction, "size_pct": dynamic_size, "leverage": 1, "prob": confidence, "source": f"TITANO_V6_{'ACCUMULO' if is_owned else 'NUOVO'}"}
                             await r.publish("execution_requests", json.dumps(req))
                             await r.publish("audit_requests", json.dumps(req))
                         else:
+                            logger.info(f"🧠 [TITANO V6] {epic} -> {direction} (Confidence: {confidence*100:.1f}%)")
                             req_ui = {"epic": epic, "direction": "FLAT", "size_pct": 0, "prob": confidence, "source": "TITANO_V6_SUPREMO"}
                             await r.publish("audit_requests", json.dumps(req_ui))
             except Exception as e:
@@ -240,7 +262,10 @@ async def startup_event():
     # 2. Schedulazione Notturna (Mezzanotte)
     schedule_nightly_learning()
     
-    # 3. Avvio Loop di Trading
+    # 3. Avvio Sync Portafoglio
+    asyncio.create_task(portfolio_sync_loop())
+    
+    # 4. Avvio Loop di Trading
     asyncio.create_task(titano_loop())
 
 @app.get("/")

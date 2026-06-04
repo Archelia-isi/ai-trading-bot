@@ -17,11 +17,24 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 db = DatabaseManager()
 db_queue = asyncio.Queue()
 
-# Liste temporanee
-PORTFOLIO_ASSETS = ["BTCUSD", "ETHUSD", "AAPL"]
-CRYPTO_MAJORS = ["SOLUSD", "DOGEUSD", "XRPUSD", "ADAUSD"]
-STOCK_MAJORS = ["MSFT", "NVDA", "AMZN", "META", "TSLA", "SPY", "QQQ"]
-RADAR_POOL = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "GOLD", "USOIL"]
+# Liste fisse
+CRYPTO_MAJORS_1 = ["BTCUSD", "ETHUSD", "SOLUSD"]
+CRYPTO_MAJORS_2 = ["DOGEUSD", "XRPUSD", "ADAUSD"]
+
+STOCK_MAJORS_1 = ["AAPL", "MSFT", "NVDA", "AMZN"]
+STOCK_MAJORS_2 = ["META", "TSLA", "SPY", "QQQ"]
+
+# Liste rotazionali (Global Pool)
+GLOBAL_CRYPTO = [
+    "LTCUSD", "BCHUSD", "DOTUSD", "LINKUSD", "XLMUSD", "UNIUSD", "AVAXUSD",
+    "ATOMUSD", "FILUSD", "AAVEUSD", "MKRUSD", "SNXUSD", "COMPUSD", "EOSUSD"
+]
+
+GLOBAL_MARKETS = [
+    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "GOLD", "USOIL", "NATURALGAS",
+    "NFLX", "GOOGL", "BABA", "DIS", "BA", "IBM", "INTC", "CSCO", "PEP", "KO", "WMT", "JPM", "V", "MA",
+    "EURGBP", "EURJPY", "GBPJPY", "SILVER", "COPPER", "PALLADIUM"
+]
 
 api = CapitalComAPI()
 
@@ -109,8 +122,8 @@ def process_tick(epic: str, price: float):
             c["close"] = price
             c["ticks"] += 1
 
-async def ws_handler(socket_id: int, role: str, epics_list: list, r: aioredis.Redis, is_radar: bool = False):
-    """Gestisce una singola connessione WebSocket verso Capital.com"""
+async def ws_handler_fixed(socket_id: int, role: str, epics_list: list, r: aioredis.Redis):
+    """Gestisce una singola connessione WebSocket verso Capital.com (Asset Fissi)"""
     if not api.is_authenticated:
         return
 
@@ -121,9 +134,8 @@ async def ws_handler(socket_id: int, role: str, epics_list: list, r: aioredis.Re
     }
     
     uri = "wss://api-streaming-capital.backend-capital.com/connect"
-    logger.info(f"🟢 [Socket {socket_id} - {role}] Avvio connessione WebSocket (Radar={is_radar})...")
+    logger.info(f"🟢 [Socket {socket_id} - {role}] Avvio connessione Fissa...")
     
-    # Pre-caricamento storico REST
     for epic in epics_list:
         await prefill_historical_data(epic)
     
@@ -138,29 +150,115 @@ async def ws_handler(socket_id: int, role: str, epics_list: list, r: aioredis.Re
                 }
                 await ws.send(json.dumps(subscribe_msg))
                 
-                # Se è un RADAR, dopo 60 secondi fa unsubscribe e cambia lista (da implementare la rotazione)
-                start_time = time.time()
-
                 async for message in ws:
                     data = json.loads(message)
                     if "payload" in data:
                         tick = data["payload"]
                         epic = tick.get("epic")
-                        # Prezzo bid/ask (calcoliamo mid-price)
                         bid = tick.get("bid")
-                        ask = tick.get("ofr") # offer
+                        ask = tick.get("ofr")
                         if epic and bid and ask:
                             mid_price = (bid + ask) / 2
                             process_tick(epic, mid_price)
                             
-                    # Se è un radar, controlliamo il timeout (es. ogni 60 secondi cambiamo mercato)
-                    if is_radar and (time.time() - start_time > 60):
-                        logger.info(f"🔄 [Socket {socket_id} Radar] Timeout 60s. Rotazione mercati in arrivo...")
-                        # In una versione finale qui faremmo ws.send("unsubscribe") e caricheremmo nuovi epics
-                        start_time = time.time()
-                        
         except Exception as e:
             logger.error(f"❌ [Socket {socket_id}] Disconnesso o errore: {e}. Riconnessione...")
+            await asyncio.sleep(5)
+
+async def ws_handler_rotational(socket_id: int, role: str, pool: list, r: aioredis.Redis, chunk_size: int = 5, rotation_minutes: int = 10):
+    """WebSocket Rotazionale: Scansiona il mercato a blocchi ogni X minuti"""
+    if not api.is_authenticated: return
+    headers = {'CST': api.cst_token, 'X-SECURITY-TOKEN': api.x_security_token, 'X-CAP-API-KEY': str(api.api_key)}
+    uri = "wss://api-streaming-capital.backend-capital.com/connect"
+    
+    while True:
+        # Mescola o cicla (qui prendiamo blocchi in ordine per semplicità)
+        import random
+        random.shuffle(pool)
+        chunk = pool[:chunk_size]
+        
+        logger.info(f"🔄 [Socket {socket_id} - {role}] Rotazione Radar -> Scansionando: {chunk}")
+        
+        for epic in chunk:
+            await prefill_historical_data(epic)
+            
+        try:
+            async with websockets.connect(uri, extra_headers=headers, ping_interval=30, ping_timeout=10) as ws:
+                subscribe_msg = {"destination": "marketdata.subscribe", "payload": {"epics": chunk}}
+                await ws.send(json.dumps(subscribe_msg))
+                
+                start_time = time.time()
+                async for message in ws:
+                    data = json.loads(message)
+                    if "payload" in data:
+                        tick = data["payload"]
+                        epic = tick.get("epic")
+                        bid = tick.get("bid")
+                        ask = tick.get("ofr")
+                        if epic and bid and ask:
+                            mid_price = (bid + ask) / 2
+                            process_tick(epic, mid_price)
+                            
+                    # Controlla se è tempo di ruotare
+                    if time.time() - start_time > (rotation_minutes * 60):
+                        logger.info(f"⏱️ [Socket {socket_id} - {role}] Fine turno per {chunk}. Sgancio...")
+                        break # Esce dal for, chiude il socket, ricomincia il while True con nuovo chunk
+                        
+        except Exception as e:
+            logger.error(f"❌ [Socket {socket_id} - Radar] Errore: {e}. Riprovo...")
+            await asyncio.sleep(5)
+
+async def ws_handler_portfolio(socket_id: int, r: aioredis.Redis):
+    """Canale 1: Dedicato solo agli asset attualmente aperti in portafoglio."""
+    if not api.is_authenticated: return
+    headers = {'CST': api.cst_token, 'X-SECURITY-TOKEN': api.x_security_token, 'X-CAP-API-KEY': str(api.api_key)}
+    uri = "wss://api-streaming-capital.backend-capital.com/connect"
+    
+    current_epics = set()
+    pubsub = r.pubsub()
+    await pubsub.subscribe("portfolio_status")
+    
+    while True:
+        try:
+            async with websockets.connect(uri, extra_headers=headers, ping_interval=30, ping_timeout=10) as ws:
+                logger.info(f"🟢 [Socket {socket_id} - Custode] Connesso in ascolto sul portafoglio.")
+                
+                async def listen_ws():
+                    async for message in ws:
+                        data = json.loads(message)
+                        if "payload" in data:
+                            tick = data["payload"]
+                            epic, bid, ask = tick.get("epic"), tick.get("bid"), tick.get("ofr")
+                            if epic and bid and ask:
+                                process_tick(epic, (bid + ask) / 2)
+
+                async def watch_portfolio():
+                    nonlocal current_epics
+                    async for message in pubsub.listen():
+                        if message['type'] == 'message':
+                            try:
+                                data = json.loads(message['data'])
+                                new_epics = set([p['epic'] for p in data.get('open_positions', [])])
+                                
+                                if new_epics != current_epics:
+                                    # Se ci sono nuovi epic, facciamo prefill
+                                    for e in new_epics - current_epics:
+                                        await prefill_historical_data(e)
+                                        
+                                    if new_epics:
+                                        await ws.send(json.dumps({"destination": "marketdata.subscribe", "payload": {"epics": list(new_epics)}}))
+                                        logger.info(f"🛡️ [Custode] Aggiornata sottoscrizione portafoglio: {list(new_epics)}")
+                                        
+                                    current_epics = new_epics
+                            except Exception as e:
+                                pass
+                
+                # Esegui i due task finché il WS è aperto
+                done, pending = await asyncio.wait([asyncio.create_task(listen_ws()), asyncio.create_task(watch_portfolio())], return_when=asyncio.FIRST_COMPLETED)
+                for task in pending: task.cancel()
+                
+        except Exception as e:
+            logger.error(f"❌ [Socket {socket_id} - Custode] Errore: {e}. Riconnessione in 5s...")
             await asyncio.sleep(5)
 
 # Task parallelo che ogni 60 secondi invia i dati aggregati (30 candele) a Titano
@@ -196,11 +294,16 @@ async def main():
         return
         
     tasks = []
-    tasks.append(asyncio.create_task(ws_handler(1, "Custode", PORTFOLIO_ASSETS, r)))
-    tasks.append(asyncio.create_task(ws_handler(2, "Crypto Maj A", CRYPTO_MAJORS[:2], r)))
-    tasks.append(asyncio.create_task(ws_handler(3, "Crypto Maj B", CRYPTO_MAJORS[2:], r)))
-    tasks.append(asyncio.create_task(ws_handler(6, "Stock Maj A", STOCK_MAJORS[:3], r)))
-    tasks.append(asyncio.create_task(ws_handler(7, "Stock Maj B", STOCK_MAJORS[3:], r)))
+    tasks.append(asyncio.create_task(ws_handler_portfolio(1, r)))
+    tasks.append(asyncio.create_task(ws_handler_fixed(2, "Crypto Maggiori 1", CRYPTO_MAJORS_1, r)))
+    tasks.append(asyncio.create_task(ws_handler_fixed(3, "Crypto Maggiori 2", CRYPTO_MAJORS_2, r)))
+    tasks.append(asyncio.create_task(ws_handler_rotational(4, "Crypto Altcoin 1", GLOBAL_CRYPTO, r, chunk_size=5, rotation_minutes=10)))
+    tasks.append(asyncio.create_task(ws_handler_rotational(5, "Crypto Altcoin 2", GLOBAL_CRYPTO, r, chunk_size=5, rotation_minutes=10)))
+    
+    tasks.append(asyncio.create_task(ws_handler_fixed(6, "Stock Maggiori 1", STOCK_MAJORS_1, r)))
+    tasks.append(asyncio.create_task(ws_handler_fixed(7, "Stock Maggiori 2", STOCK_MAJORS_2, r)))
+    tasks.append(asyncio.create_task(ws_handler_rotational(8, "Global Radar 1", GLOBAL_MARKETS, r, chunk_size=6, rotation_minutes=10)))
+    tasks.append(asyncio.create_task(ws_handler_rotational(9, "Global Radar 2", GLOBAL_MARKETS, r, chunk_size=6, rotation_minutes=10)))
     
     # Task Publisher per Titano
     tasks.append(asyncio.create_task(publisher_loop(r)))
