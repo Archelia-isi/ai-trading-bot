@@ -227,7 +227,11 @@ async def titano_loop():
                             action_log = "ACCUMULO (Pyramiding)" if is_owned else "NUOVA POSIZIONE"
                             logger.info(f"🧠 [TITANO V6] {epic} -> {direction} ({action_log}) (Confidence: {confidence*100:.1f}%)")
                             
-                            req = {"epic": epic, "direction": direction, "size_pct": dynamic_size, "leverage": 1, "prob": confidence, "source": f"TITANO_V6_{'ACCUMULO' if is_owned else 'NUOVO'}"}
+                            req = {
+                                "epic": epic, "direction": direction, "size_pct": dynamic_size, "leverage": 1, 
+                                "prob": confidence, "xgb_prob": float(xgb_prob), "news_sentiment": float(news_sentiment),
+                                "source": f"TITANO_V6_{'ACCUMULO' if is_owned else 'NUOVO'}"
+                            }
                             await r.publish("execution_requests", json.dumps(req))
                             await r.publish("audit_requests", json.dumps(req))
                         else:

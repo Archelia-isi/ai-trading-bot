@@ -144,6 +144,17 @@ async def execution_manager_loop():
                                 if "dealReference" in res:
                                     logger.info(f"✅ Ordine {action_str} Eseguito con successo su {epic}!")
                                     await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "APPROVED"}))
+                                    
+                                    # Genera la Genesi del Trade per il Supervisore
+                                    genesis_req = {
+                                        "epic": epic,
+                                        "direction": direction,
+                                        "source": data.get("source", "TITANO_V6"),
+                                        "votes_mean": data.get("xgb_prob", data.get("prob", 0.5)),
+                                        "size": size_pct,
+                                        "price": price
+                                    }
+                                    await r.publish("supervisor_trade_genesis", json.dumps(genesis_req))
                                 else:
                                     logger.error(f"❌ Ordine {action_str} Fallito su {epic}: {res}")
                                     await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "ERROR"}))
