@@ -160,11 +160,11 @@ async def redis_listener():
                         final_pnl = active_trades_pnl.get(closed_epic, 0.0)
                         logger.info(f"Rilevata chiusura trade su {closed_epic}. PnL Finale: {final_pnl}%")
                         
-                        # Cerchiamo nel DB il trade non valutato per questo epic
+                        # Cerchiamo nel DB tutti i trade non valutati per questo epic (Accumuli)
                         unevaluated = db.get_unevaluated_trades()
-                        target_trade = next((t for t in unevaluated if t['epic'] == closed_epic), None)
+                        target_trades = [t for t in unevaluated if t['epic'] == closed_epic]
                         
-                        if target_trade:
+                        for target_trade in target_trades:
                             db.mark_trade_evaluated(target_trade['id'], final_pnl)
                             # Generiamo il protocollo di apprendimento in background
                             asyncio.create_task(
