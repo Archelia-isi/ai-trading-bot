@@ -64,6 +64,7 @@ async def portfolio_monitor_loop():
                         "leverage": leverage,
                         "margin_usd": margin_usd,
                         "notional_usd": notional_usd,
+                        "upl": upl,
                         "pnl_pct": (upl / portfolio_state["total_capital"] * 100) if portfolio_state["total_capital"] > 0 else 0.0
                     })
                     current_pnl_usd += upl
