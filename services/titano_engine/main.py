@@ -201,11 +201,23 @@ async def titano_loop():
                     df['volatility'] = df['returns'].rolling(window=20).std()
                     df.fillna(0, inplace=True)
                     
-                    # Recupero Parere XGBoost (Simulato per ora, si leggerà da Redis)
-                    xgb_prob = 0.5 
+                    # Recupero Parere XGBoost
+                    try:
+                        xgb_val = await r.get(f"xgboost_prob:{epic}")
+                        xgb_prob = float(xgb_val) if xgb_val else 0.5
+                    except:
+                        xgb_prob = 0.5
                     
-                    # Recupero Parere News (Simulato per ora)
-                    news_sentiment = 0.0 
+                    # Recupero Parere News (FinBERT o CryptoBERT)
+                    try:
+                        is_crypto = any(c in epic for c in ["BTC", "ETH", "SOL", "DOGE", "XRP"])
+                        if is_crypto:
+                            news_val = await r.get(f"cryptobert_sentiment:{epic}")
+                        else:
+                            news_val = await r.get(f"finbert_sentiment:{epic}")
+                        news_sentiment = float(news_val) if news_val else 0.0
+                    except:
+                        news_sentiment = 0.0
                     
                     df['xgb_proxy'] = xgb_prob
                     df['news_proxy'] = news_sentiment
@@ -224,20 +236,34 @@ async def titano_loop():
                     # Inferenza Simultanea Vettorizzata
                     azioni, _ = model.predict(obs_tensor, deterministic=True)
                     
-                    # Estrazione Sicurezza (Confidence) -> Verrà implementata accedendo alla Policy della PPO
-                    # Per ora inviamo le richieste di Audit classiche
+                    # Estrazione Sicurezza (Confidence)
+                    with torch.no_grad():
+                        obs_tensor_th = torch.as_tensor(obs_tensor, device=model.device)
+                        distribution = model.policy.get_distribution(obs_tensor_th)
+                        probs = distribution.distribution.probs.cpu().numpy()
+                    
                     for i, epic in enumerate(valid_assets):
                         act_val = azioni[i]
+                        confidence = float(probs[i][act_val])
+                        
                         direction = "FLAT"
                         if act_val == 0: direction = "SELL"
                         elif act_val == 2: direction = "BUY"
                         
                         if direction != "FLAT":
-                            # Salviamo anche la fotografia esatta 30x4 (batch_obs[i]) in JSON per l'Online Learning
-                            # La logica del salvataggio DB verrà attivata nel prossimo task
+                            # Calcolo Size Dinamica: Max 10% del capitale. Se confidence 90% -> 9.0%, se 51% -> 5.1%
+                            dynamic_size = round(confidence * 10.0, 2)
                             
-                            req = {"epic": epic, "direction": direction, "size_pct": 5.0, "leverage": 1, "prob": 0.99, "source": "TITANO_V6_UNIVERSAL"}
-                            await r.publish("audit_requests", json.dumps(req))
+                            req = {
+                                "epic": epic, 
+                                "direction": direction, 
+                                "size_pct": dynamic_size, 
+                                "leverage": 1, 
+                                "prob": confidence, 
+                                "source": "TITANO_V6_SUPREMO"
+                            }
+                            # BYPASS AUDIT (Carta Bianca): Invia direttamente all'Esecutore
+                            await r.publish("execution_requests", json.dumps(req))
 
         except Exception as e:
             logger.error(f"Errore nel loop di Titano: {e}")
