@@ -118,7 +118,21 @@ async def titano_loop():
             logger.info("🧠 Modello Titano V5 caricato con successo!")
         else:
             model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V6_Universale.zip")
-            model = PPO.load(model_path, custom_objects={'EstrazioneCaratteristiche': EstrazioneCaratteristiche})
+            
+            # Ricostruiamo i kwargs della V6 Supremo per bypassare i bug di deserializzazione
+            policy_kwargs = dict(
+                features_extractor_class=EstrazioneCaratteristiche,
+                features_extractor_kwargs=dict(dimensione_caratteristiche=2048),
+                net_arch=dict(pi=[2048, 2048], vf=[2048, 2048])
+            )
+            
+            model = PPO.load(
+                model_path, 
+                custom_objects={
+                    'EstrazioneCaratteristiche': EstrazioneCaratteristiche,
+                    'policy_kwargs': policy_kwargs
+                }
+            )
             logger.info("🧠 Modello Titano V6 UNIVERSALE caricato!")
     except Exception as e:
         logger.error(f"Errore caricamento modello: {e}")
