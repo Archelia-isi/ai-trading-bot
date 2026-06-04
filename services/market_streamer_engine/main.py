@@ -7,11 +7,15 @@ import websockets
 import redis.asyncio as aioredis
 from datetime import datetime
 from capital_api import CapitalComAPI
+from database import DatabaseManager
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
 logger = logging.getLogger(__name__)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+db = DatabaseManager()
+db_queue = asyncio.Queue()
 
 # Liste temporanee
 PORTFOLIO_ASSETS = ["BTCUSD", "ETHUSD", "AAPL"]
@@ -77,6 +81,17 @@ def process_tick(epic: str, price: float):
             historical_candles[epic].append({
                 "open": c["open"], "high": c["high"], "low": c["low"], "close": c["close"]
             })
+            
+            # --- SALVATAGGIO IN DATA LAKE (Coda Asincrona) ---
+            db_candle_format = {
+                "timestamp": int(c["minute_ts"] * 1000), # Capital.com usa millisecondi
+                "openPrice": {"bid": c["open"]},
+                "highPrice": {"bid": c["high"]},
+                "lowPrice": {"bid": c["low"]},
+                "closePrice": {"bid": c["close"]},
+                "lastTradedVolume": c["ticks"]
+            }
+            db_queue.put_nowait((epic, [db_candle_format]))
             
             # Manteniamo solo le ultime 30 candele per l'inferenza V6
             if len(historical_candles[epic]) > 30:
@@ -163,6 +178,18 @@ async def publisher_loop(r: aioredis.Redis):
             await r.publish("market_updates", json.dumps(ready_assets))
             logger.info(f"✅ Inviato pacchetto di inferenza per {len(ready_assets)} asset.")
 
+# Task in background per salvare nel DB senza bloccare il WebSocket
+async def db_writer_loop():
+    logger.info("💾 Data Lake Writer Worker avviato.")
+    while True:
+        try:
+            epic, candles = await db_queue.get()
+            # Eseguiamo la query bloccante in un thread separato
+            await asyncio.to_thread(db.save_candles, epic, candles)
+            db_queue.task_done()
+        except Exception as e:
+            logger.error(f"Errore scrittura Data Lake: {e}")
+
 async def main():
     r = await aioredis.from_url(REDIS_URL, decode_responses=True)
     if not api.authenticate():
@@ -177,6 +204,9 @@ async def main():
     
     # Task Publisher per Titano
     tasks.append(asyncio.create_task(publisher_loop(r)))
+    
+    # Task Scrittura Database Data Lake
+    tasks.append(asyncio.create_task(db_writer_loop()))
     
     await asyncio.gather(*tasks)
 
