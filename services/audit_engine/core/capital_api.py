@@ -80,16 +80,16 @@ class CapitalComAPI:
     def get_all_positions(self) -> list:
         """Recupera la lista cruda di tutte le posizioni aperte su Capital.com."""
         if not self.is_authenticated:
-            return []
+            return None
         try:
             response = requests.get(f"{self.base_url}/positions", headers=self._get_headers(with_auth=True), timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 return data.get('positions', [])
-            return []
+            return None
         except Exception as e:
             logger.error(f"Errore nel recupero posizioni: {e}")
-            return []
+            return None
 
     def get_margin_info(self) -> dict:
         """Restituisce equity e margine disponibile per calcolare l'esposizione."""

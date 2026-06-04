@@ -36,6 +36,15 @@ async def portfolio_monitor_loop():
                     portfolio_state["total_capital"] = new_equity
                 
                 raw_positions = api.get_all_positions()
+                
+                # PROTEZIONE ANTI-DISCONNESSIONE: 
+                # Se la chiamata fallisce (ritorna None), NON pubblichiamo un array vuoto
+                # altrimenti l'Esattore pensa che i trade siano stati chiusi.
+                if raw_positions is None:
+                    logger.warning("Disconnessione temporanea da Capital.com. Attendo il prossimo ciclo...")
+                    await asyncio.sleep(2)
+                    continue
+                
                 open_positions = []
                 current_pnl_usd = 0.0
                 

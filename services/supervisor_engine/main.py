@@ -147,6 +147,13 @@ async def redis_listener():
                         new_open_epics.add(epic)
                         active_trades_pnl[epic] = pnl # Aggiorna l'ultimo PnL noto
                         
+                    # PROTEZIONE: Se improvvisamente i trade scendono a zero ma ce n'erano tanti,
+                    # potrebbe essere un calo di rete. Non chiudiamo l'universo senza conferma.
+                    if len(new_open_epics) == 0 and len(currently_open_epics) > 0:
+                        logger.warning("ATTENZIONE: Ricevuto array vuoto da Redis ma avevamo posizioni aperte. Potrebbe essere una disconnessione di Capital.com. Attendo conferme.")
+                        await asyncio.sleep(5)
+                        continue
+                        
                     # Controlliamo se qualche trade è stato chiuso
                     closed_epics = currently_open_epics - new_open_epics
                     for closed_epic in closed_epics:
