@@ -358,6 +358,19 @@
                 </tr>
             </tbody>
         </table>
+        
+        <!-- Riepilogo Storico (PnL dall'avvio) -->
+        <div style="margin-top: 15px; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(255,255,255,0.05);">
+            <div>
+                <span style="color: var(--text-muted); font-size: 0.9rem;">Capitale Iniziale:</span>
+                <span style="font-weight: bold; font-size: 1.1rem; margin-left: 10px; color: var(--text-primary);">$89,000.00</span>
+            </div>
+            <div style="text-align: right;">
+                <span style="color: var(--text-muted); font-size: 0.9rem; margin-right: 10px;">Utile/Perdita Totale:</span>
+                <span id="historic-pnl-val" style="font-weight: bold; font-size: 1.2rem; margin-right: 15px;">$0.00</span>
+                <span id="historic-pnl-pct" class="badge neu">0.00%</span>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/odometer.js/0.4.8/odometer.min.js"></script>
@@ -475,6 +488,23 @@
                     document.getElementById('val-pnl-container').className = 'widget-value ' + (isPos ? 'pos' : (isNeg ? 'neg' : ''));
                     odoPnl.update(Math.abs(newPnl));
                     currentVals.pnl = newPnl;
+                }
+                
+                // Aggiornamento PnL Storico
+                if (data.historic_pnl_usd !== undefined) {
+                    const histPnlUsd = data.historic_pnl_usd;
+                    const histPnlPct = data.historic_pnl_pct;
+                    const elVal = document.getElementById('historic-pnl-val');
+                    const elPct = document.getElementById('historic-pnl-pct');
+                    
+                    const isHistPos = histPnlUsd > 0;
+                    const isHistNeg = histPnlUsd < 0;
+                    
+                    elVal.textContent = (isHistPos ? '+' : '') + '$' + histPnlUsd.toFixed(2);
+                    elVal.style.color = isHistPos ? 'var(--pos-color)' : (isHistNeg ? 'var(--neg-color)' : 'var(--text-primary)');
+                    
+                    elPct.textContent = (isHistPos ? '+' : '') + histPnlPct.toFixed(2) + '%';
+                    elPct.className = 'badge ' + (isHistPos ? 'buy' : (isHistNeg ? 'sell' : 'neu'));
                 }
                 
                 const tbody = document.querySelector('#table-positions tbody');

@@ -22,6 +22,8 @@ portfolio_state = {
     "is_trading_locked": False
 }
 
+INITIAL_CAPITAL = 89000.0 # Capitale Iniziale al lancio del software
+
 async def portfolio_monitor_loop():
     logger.info("Avviato Monitor Portfolio dell'Esecutore (per la Dashboard)...")
     r = await aioredis.from_url(REDIS_URL)
@@ -76,6 +78,11 @@ async def portfolio_monitor_loop():
                 portfolio_state["available_capital"] = available_capital
                 portfolio_state["open_positions"] = open_positions
                 portfolio_state["current_pnl_pct"] = (current_pnl_usd / portfolio_state["total_capital"] * 100) if portfolio_state["total_capital"] > 0 else 0.0
+                
+                # Calcolo PnL Storico (Dall'inizio del software)
+                total_historic_pnl_usd = portfolio_state["total_capital"] - INITIAL_CAPITAL
+                portfolio_state["historic_pnl_usd"] = total_historic_pnl_usd
+                portfolio_state["historic_pnl_pct"] = (total_historic_pnl_usd / INITIAL_CAPITAL) * 100
             
             # Pubblica su Redis per la Dashboard
             await r.publish("portfolio_status", json.dumps(portfolio_state))
