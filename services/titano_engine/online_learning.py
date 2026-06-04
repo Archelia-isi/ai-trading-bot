@@ -15,10 +15,11 @@ logger = logging.getLogger(__name__)
 db = DatabaseManager()
 
 class ExperienceReplayEnv(gym.Env):
-    def __init__(self, evaluated_trades: list):
+    def __init__(self, evaluated_trades: list, daily_bonus: float = 0.0):
         super(ExperienceReplayEnv, self).__init__()
         self.trades = evaluated_trades
         self.current_trade_idx = 0
+        self.daily_bonus = daily_bonus
         
         self.dimensione_finestra = 30
         self.action_space = spaces.Discrete(3) 
@@ -116,8 +117,35 @@ class ExperienceReplayEnv(gym.Env):
         elif reward > 0:
             reward *= 4.0 # I profitti incassati esplodono x4! Così l'IA capisce che il rischio vale l'azione.
             
+        # --- MEGA-PREMIO A SCAGLIONI ---
+        # Se Titano ha raggiunto l'obiettivo giornaliero, viene perdonato e premiato.
+        if self.daily_bonus > 0:
+            reward += self.daily_bonus
+            
         self.current_trade_idx += 1
         return self.current_obs, float(reward), True, False, {}
+
+def get_daily_bonus():
+    try:
+        import redis
+        import json
+        r = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=True)
+        data = r.get("portfolio_status")
+        if data:
+            status = json.loads(data)
+            daily_pnl_pct = status.get("daily_pnl_pct", 0.0)
+            logger.info(f"Rilevato PnL Giornaliero: {daily_pnl_pct:.2f}%")
+            
+            # Calcolo Scaglioni
+            if daily_pnl_pct >= 3.0: return 50.0   # Scaglione 6: Jackpot
+            elif daily_pnl_pct >= 2.5: return 35.0 # Scaglione 5
+            elif daily_pnl_pct >= 2.0: return 20.0 # Scaglione 4
+            elif daily_pnl_pct >= 1.5: return 10.0 # Scaglione 3
+            elif daily_pnl_pct >= 1.0: return 5.0  # Scaglione 2
+            elif daily_pnl_pct >= 0.5: return 2.0  # Scaglione 1
+    except Exception as e:
+        logger.error(f"Errore calcolo daily bonus: {e}")
+    return 0.0
 
 def perform_online_learning():
     logger.info("🌙 Palestra Notturna: Avvio procedura di Online Learning (Experience Replay)...")
@@ -127,9 +155,13 @@ def perform_online_learning():
             logger.info("Nessun trade valutato recente trovato per il retraining.")
             return
 
+        daily_bonus = get_daily_bonus()
+        if daily_bonus > 0:
+            logger.info(f"🏆 MEGA-PREMIO A SCAGLIONI SBLOCCATO! Bonus per i trade di oggi: +{daily_bonus}")
+
         logger.info(f"Trovati {len(trades)} trade passati. Creazione Ambiente Replay...")
         
-        env = DummyVecEnv([lambda: ExperienceReplayEnv(trades)])
+        env = DummyVecEnv([lambda: ExperienceReplayEnv(trades, daily_bonus=daily_bonus)])
         
         model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V6_Universale.zip")
         if not os.path.exists(model_path):

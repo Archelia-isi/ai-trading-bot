@@ -1,28 +1,24 @@
+import asyncio
 import os
-import psycopg2
-from dotenv import load_dotenv
+import sys
+# Add current dir to path to import services
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from services.supervisor_engine.core.database import DatabaseManager
 
-load_dotenv()
+db = DatabaseManager()
+logs = db.get_recent_logs(limit=10)
+print("--- RECENT LOGS ---")
+for l in logs:
+    print(f"[{l['timestamp']}] {l['action']} {l['asset']} @ {l['price']} | Status: {l['status']}")
 
-def run():
-    db_url = os.getenv("NEON_DB_URL")
-    conn = psycopg2.connect(db_url)
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, protocol_text FROM ai_protocols WHERE is_active = TRUE;")
-            rows = cur.fetchall()
-            print(f"Trovati {len(rows)} protocolli attivi:")
-            for row in rows:
-                print(f"ID: {row[0]}, Testo: {row[1]}")
-                
-            print("Azzeramento di TUTTA la memoria viziata del Supervisore (Clean Slate)...")
-            cur.execute("UPDATE ai_protocols SET is_active = FALSE;")
-            conn.commit()
-            print("Fatto. Memoria resettata.")
-    except Exception as e:
-        print(f"Errore: {e}")
-    finally:
-        conn.close()
-
-if __name__ == '__main__':
-    run()
+conn = db._get_connection()
+if conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM trade_genesis WHERE closed_at IS NOT NULL ORDER BY closed_at DESC LIMIT 5")
+        closed = cur.fetchall()
+        print("\n--- RECENTLY CLOSED GENESIS TRADES ---")
+        for c in closed:
+            print(c)
+    conn.close()
+else:
+    print("Could not connect to database")
