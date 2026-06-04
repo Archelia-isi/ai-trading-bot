@@ -406,7 +406,7 @@
                 
                 const source = data.source || '';
                 
-                if (source === 'TITANO_V4' || source === 'TITANO_V5') {
+                if (source.includes('TITANO')) {
                     const html = `
                         <div class="card-header"><span>${time}</span> <span>${epic}</span></div>
                         <div class="card-title">Direzione: <span class="badge ${badgeCls}">${dirIT}</span></div>

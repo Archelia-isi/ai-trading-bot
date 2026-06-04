@@ -147,6 +147,18 @@ async def scan_feed(feed_info, seen_articles):
             # Soglia di confidenza al 75% per evitare rumore nei log
             if score >= 0.75 and label != "NEUTRAL":
                 logger.info(f"[{source_name}] 🚨 BOMBA SU {epic}: {title} [{label} {score}] -> Salvato su Redis per Titano V6")
+                
+                # Invia l'informazione alla Dashboard Visiva
+                direction = "BUY" if label == "POSITIVE" else "SELL"
+                payload = {
+                    "epic": epic,
+                    "direction": direction,
+                    "size_pct": 0.0,
+                    "prob": float(score),
+                    "source": "NLP_ENGINE",
+                    "title": title
+                }
+                redis_client.publish("audit_requests", json.dumps(payload))
 
     except Exception as e:
         logger.error(f"Errore nell'Agente Segugio {source_name}: {e}")

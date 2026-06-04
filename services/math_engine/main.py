@@ -261,8 +261,10 @@ async def portfolio_shield_loop():
                     
                     if prob <= 0.35:
                         logger.warning(f"🛡️ SCUDO ATTIVO! Crollo rilevato su {epic}: Prob Rialzo {prob*100:.2f}%. (Solo alert log, Titano deciderà se chiudere).")
+                        await redis_client.publish("audit_requests", json.dumps({"epic": epic, "direction": "SELL", "prob": prob, "source": "XGBOOST", "title": "Scudo: Crollo Imminente"}))
                     elif prob >= GLOBAL_CONFIG['hunter_long']:
                         logger.info(f"🛡️ SCUDO ATTIVO! Rally rilevato su {epic}: Prob Rialzo {prob*100:.2f}%. (Solo alert log, Titano deciderà se chiudere/aprire).")
+                        await redis_client.publish("audit_requests", json.dumps({"epic": epic, "direction": "BUY", "prob": prob, "source": "XGBOOST", "title": "Scudo: Spike Imminente"}))
                         
                 except Exception as e:
                     logger.warning(f"Errore Scudo su {epic}: {e}")
@@ -337,9 +339,11 @@ async def market_hunter_loop():
                     
                     if prob >= GLOBAL_CONFIG['hunter_long']:
                         logger.info(f"🏹 CACCIATORE: Trova LONG su {epic} (Prob {prob*100:.2f}%). Salvato in cache per Titano V6.")
+                        await redis_client.publish("audit_requests", json.dumps({"epic": epic, "direction": "BUY", "prob": prob, "source": "XGBOOST"}))
                         
                     elif prob <= GLOBAL_CONFIG['hunter_short']:
                         logger.info(f"🏹 CACCIATORE: Trova SHORT su {epic} (Prob {prob*100:.2f}%). Salvato in cache per Titano V6.")
+                        await redis_client.publish("audit_requests", json.dumps({"epic": epic, "direction": "SELL", "prob": prob, "source": "XGBOOST"}))
                 
                 # Pausa Anti-Ban per respirare tra un blocco e l'altro
                 await asyncio.sleep(3)
