@@ -129,7 +129,7 @@ def perform_online_learning():
         from main import EstrazioneCaratteristiche # Import per garantire la ricostruzione custom object se necessario
         
         logger.info("Caricamento cervello Titano per il ri-addestramento...")
-        model = PPO.load(model_path, env=env, device="cpu") # Eseguiamo su CPU per non disturbare altri processi
+        model = PPO.load(model_path, env=env, device="cpu", custom_objects={'EstrazioneCaratteristiche': EstrazioneCaratteristiche}) # Eseguiamo su CPU per non disturbare altri processi
         
         timesteps_necessari = len(env.envs[0].precomputed_states) * 10
         if timesteps_necessari > 0:

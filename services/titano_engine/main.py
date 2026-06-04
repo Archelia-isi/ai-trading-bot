@@ -57,6 +57,34 @@ class MultiAssetFeatureExtractor(BaseFeaturesExtractor):
         x = self.cnn(observations)
         return self.linear(x)
 
+# --- CLASSE CUSTOM V6 ---
+class EstrazioneCaratteristiche(BaseFeaturesExtractor):
+    def __init__(self, observation_space: gym.spaces.Box, dimensione_caratteristiche: int = 2048):
+        super().__init__(observation_space, dimensione_caratteristiche)
+        self.rete_visiva = nn.Sequential(
+            nn.Conv1d(4, 256, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool1d(2),
+            nn.Conv1d(256, 512, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool1d(2),
+            nn.Conv1d(512, 1024, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Flatten()
+        )
+        with torch.no_grad():
+            campione = torch.zeros(1, 4, observation_space.shape[0])
+            dim_appiattita = self.rete_visiva(campione).shape[1]
+            
+        self.cervello_logico = nn.Sequential(
+            nn.Linear(dim_appiattita, dimensione_caratteristiche),
+            nn.ReLU()
+        )
+
+    def forward(self, osservazioni: torch.Tensor) -> torch.Tensor:
+        x = osservazioni.permute(0, 2, 1)
+        return self.cervello_logico(self.rete_visiva(x))
+
 # --- CONFIGURAZIONE ASSET ---
 # Ordine rigorosamente alfabetico basato sul nome file (es. AAPL_1m.parquet -> AAPL)
 ASSETS = [
@@ -73,15 +101,14 @@ def get_capital_epic(ticker: str) -> str:
 
 # --- TOGGLE DI TRANSIZIONE (V5 -> V6) ---
 # Imposta a True SOLO quando hai caricato il file Titano_V6_Universale.zip
-USIAMO_LA_V6 = False
+USIAMO_LA_V6 = True
 
 async def titano_loop():
     logger.info(f"Avviato Titano Engine (V6={USIAMO_LA_V6})...")
     
     import __main__
     setattr(__main__, 'MultiAssetFeatureExtractor', MultiAssetFeatureExtractor)
-    
-    # IMPORTANTE: Quando useremo la V6, dovremo registrare la nuova classe UniversalFeatureExtractor
+    setattr(__main__, 'EstrazioneCaratteristiche', EstrazioneCaratteristiche)
     
     try:
         if not USIAMO_LA_V6:
@@ -90,8 +117,7 @@ async def titano_loop():
             logger.info("🧠 Modello Titano V5 caricato con successo!")
         else:
             model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V6_Universale.zip")
-            # In futuro si aggiungerà il custom_object per UniversalFeatureExtractor
-            # model = PPO.load(model_path, custom_objects={'UniversalFeatureExtractor': UniversalFeatureExtractor})
+            model = PPO.load(model_path, custom_objects={'EstrazioneCaratteristiche': EstrazioneCaratteristiche})
             logger.info("🧠 Modello Titano V6 UNIVERSALE caricato!")
     except Exception as e:
         logger.error(f"Errore caricamento modello: {e}")
@@ -232,7 +258,7 @@ async def startup_event():
 
 @app.get("/")
 def health_check():
-    return {"status": "online", "message": "Titano V5 Node Running"}
+    return {"status": "online", "message": "Titano V6 Node Running"}
 
 if __name__ == "__main__":
     import uvicorn
