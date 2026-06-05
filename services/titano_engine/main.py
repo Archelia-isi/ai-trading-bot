@@ -266,6 +266,25 @@ async def titano_loop():
             except Exception as e:
                 logger.error(f"Errore inferenza streaming: {e}")
 
+async def system_commands_loop():
+    logger.info("📡 In ascolto per comandi di sistema (Redis)...")
+    try:
+        r = await aioredis.from_url(REDIS_URL)
+        pubsub = r.pubsub()
+        await pubsub.subscribe("system_commands")
+        async for message in pubsub.listen():
+            if message['type'] == 'message':
+                try:
+                    data = json.loads(message['data'])
+                    if data.get("command") == "force_gym":
+                        logger.info("🔥 Ricevuto comando remoto: FORZA ADDESTRAMENTO IN CORSO!")
+                        import threading
+                        threading.Thread(target=perform_online_learning).start()
+                except Exception as e:
+                    logger.error(f"Errore parsing system command: {e}")
+    except Exception as e:
+        logger.error(f"Errore Redis in system_commands_loop: {e}")
+
 def download_model_from_drive(model_path: str):
     url = f"https://drive.google.com/uc?id={V6_DRIVE_FILE_ID}"
     logger.info(f"Avvio download del modello V6 da Google Drive ({url})...")
@@ -307,7 +326,10 @@ async def startup_event():
     # 3. Avvio Sync Portafoglio
     asyncio.create_task(portfolio_sync_loop())
     
-    # 4. Avvio Loop di Trading
+    # 4. Avvio Loop Comandi di Sistema (per il pulsante Dashboard)
+    asyncio.create_task(system_commands_loop())
+    
+    # 5. Avvio Loop di Trading
     asyncio.create_task(titano_loop())
 
 @app.get("/")

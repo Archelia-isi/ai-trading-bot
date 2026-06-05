@@ -139,6 +139,7 @@ html_to_add = """
             <button class="settings-btn" onclick="openModal('modal-scaglione-3')">⚙️ Scaglione 3 (Azione Estrema)</button>
             <button class="settings-btn" onclick="openModal('modal-rischio')">🛡️ Gestione Rischio Globale</button>
             <button class="settings-btn" onclick="openModal('modal-motori')">🏹 Motori Matematici</button>
+            <button class="settings-btn" onclick="triggerForceGym()" style="border-color: #ff5252; color: #ff5252;">🔥 Forza Addestramento</button>
         </div>
     </div>
     
@@ -241,6 +242,20 @@ js_to_add = """
             }
             alert('Modifiche salvate con successo!');
             closeAllModals();
+        }
+
+        async function triggerForceGym() {
+            if (confirm("Sei sicuro di voler avviare la Palestra (Online Learning) ora? Titano userà molta potenza di calcolo.")) {
+                try {
+                    const res = await fetch('/api/force_gym', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        alert("🔥 Ordine inviato! Titano ha iniziato l'addestramento in background.");
+                    } else {
+                        alert("Errore: " + data.message);
+                    }
+                } catch (e) { console.error('Errore avvio palestra:', e); alert("Errore di rete nell'avvio."); }
+            }
         }
 
         function openModal(id) {

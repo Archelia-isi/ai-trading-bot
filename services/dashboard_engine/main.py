@@ -75,6 +75,18 @@ async def update_setting(req: SettingRequest):
         logger.error(f"Errore aggiornamento setting: {e}")
         return {"status": "error", "message": str(e)}
 
+@app.post("/api/force_gym")
+async def api_force_gym():
+    """Pubblica un comando su Redis per far partire la palestra su Titano."""
+    try:
+        r = aioredis.from_url(REDIS_URL)
+        await r.publish("system_commands", json.dumps({"command": "force_gym"}))
+        await r.close()
+        return {"status": "success", "message": "Comando inviato a Titano!"}
+    except Exception as e:
+        logger.error(f"Errore invio system command: {e}")
+        return {"status": "error", "message": str(e)}
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
