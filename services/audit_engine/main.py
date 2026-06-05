@@ -146,16 +146,53 @@ async def execution_manager_loop():
                                 break
                                 
                         if direction == "SELL":
-                            if existing_pos:
-                                logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione aperta.")
+                            existing_dir = existing_pos.get('position', {}).get('direction', 'BUY') if existing_pos else None
+                            
+                            if existing_dir == "BUY":
+                                logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione Long aperta.")
                                 api.close_position_by_epic(epic)
-                                await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Long da Titano", "status": "APPROVED"}))
-                            else:
-                                logger.info(f"Ignorato SELL su {epic} (nessuna posizione aperta da chiudere).")
-                                await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Skip SELL (Nessuna Posizione)", "status": "REJECTED"}))
+                                await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Long", "status": "APPROVED"}))
+                            
+                            action_str = "SELL (Accumulo)" if existing_dir == "SELL" else "SELL (Stop & Reverse)" if existing_dir == "BUY" else "SELL"
+                            
+                            balance = api.get_account_balance()
+                            cash_to_invest = balance * (size_pct / 100.0)
+                            
+                            price = api.get_market_price(epic)
+                            if price > 0:
+                                qty = cash_to_invest / price
+                                min_size = api.get_min_deal_size(epic)
+                                if qty < min_size:
+                                    qty = min_size
+                                
+                                logger.info(f"Esecuzione {action_str} su {epic} | Qty: {qty} (Investimento stimato: ${cash_to_invest:.2f})")
+                                res = api.place_order(epic=epic, direction="SELL", size=qty)
+                                if "dealReference" in res:
+                                    logger.info(f"✅ Ordine {action_str} Eseguito con successo su {epic}!")
+                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "APPROVED"}))
+                                    
+                                    genesis_req = {
+                                        "epic": epic,
+                                        "direction": direction,
+                                        "source": data.get("source", "TITANO_V6_SHORT"),
+                                        "votes_mean": data.get("xgb_prob", data.get("prob", 0.5)),
+                                        "size": size_pct,
+                                        "price": price
+                                    }
+                                    await r.publish("supervisor_trade_genesis", json.dumps(genesis_req))
+                                else:
+                                    logger.error(f"❌ Ordine {action_str} Fallito su {epic}: {res}")
+                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "ERROR"}))
                         
                         elif direction == "BUY":
-                            action_str = "BUY (Accumulo)" if existing_pos else "BUY"
+                            existing_dir = existing_pos.get('position', {}).get('direction', 'BUY') if existing_pos else None
+                            
+                            if existing_dir == "SELL":
+                                logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione Short aperta.")
+                                api.close_position_by_epic(epic)
+                                await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Short", "status": "APPROVED"}))
+                                
+                            action_str = "BUY (Accumulo)" if existing_dir == "BUY" else "BUY (Stop & Reverse)" if existing_dir == "SELL" else "BUY"
                             
                             balance = api.get_account_balance()
                             cash_to_invest = balance * (size_pct / 100.0)
