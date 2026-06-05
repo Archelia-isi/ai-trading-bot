@@ -118,6 +118,7 @@ def get_capital_epic(ticker: str) -> str:
 # --- TOGGLE DI TRANSIZIONE (V5 -> V6) ---
 # Imposta a True SOLO quando hai caricato il file Titano_V6_Universale.zip
 USIAMO_LA_V6 = True
+V6_DRIVE_FILE_ID = "1NCRjilt5hsysIU2rHd6RsOzjZY2KqvQh"
 
 async def titano_loop():
     logger.info(f"Avviato Titano Engine (V6={USIAMO_LA_V6})...")
@@ -266,8 +267,7 @@ async def titano_loop():
                 logger.error(f"Errore inferenza streaming: {e}")
 
 def download_model_from_drive(model_path: str):
-    file_id = "1NCRjilt5hsysIU2rHd6RsOzjZY2KqvQh"
-    url = f"https://drive.google.com/uc?id={file_id}"
+    url = f"https://drive.google.com/uc?id={V6_DRIVE_FILE_ID}"
     logger.info(f"Avvio download del modello V6 da Google Drive ({url})...")
     try:
         gdown.download(url, model_path, quiet=False)
@@ -279,10 +279,24 @@ def download_model_from_drive(model_path: str):
 async def startup_event():
     model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V6_Universale.zip")
     
-    # 0. Download del modello pesante da Google Drive (se non esiste)
-    if USIAMO_LA_V6 and not os.path.exists(model_path):
-        os.makedirs(os.path.dirname(model_path), exist_ok=True)
-        download_model_from_drive(model_path)
+    # 0. Download del modello pesante da Google Drive (se non esiste o se l'ID è cambiato)
+    if USIAMO_LA_V6:
+        id_path = model_path + ".id"
+        needs_download = True
+        
+        if os.path.exists(model_path) and os.path.exists(id_path):
+            with open(id_path, "r") as f:
+                if f.read().strip() == V6_DRIVE_FILE_ID:
+                    needs_download = False
+                    
+        if needs_download:
+            logger.info(f"Nuovo ID ({V6_DRIVE_FILE_ID}) o file mancante: scarico da Google Drive...")
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            if os.path.exists(model_path):
+                os.remove(model_path)
+            download_model_from_drive(model_path)
+            with open(id_path, "w") as f:
+                f.write(V6_DRIVE_FILE_ID)
     
     # 1. Start-up: Online Learning dai trade passati
     # perform_online_learning()
@@ -299,6 +313,12 @@ async def startup_event():
 @app.get("/")
 def health_check():
     return {"status": "online", "message": "Titano V6 Node Running"}
+
+@app.get("/force_gym")
+def force_gym():
+    import threading
+    threading.Thread(target=perform_online_learning).start()
+    return {"status": "Palestra manuale avviata in background! Controlla i log su Railway per vedere i progressi dell'addestramento."}
 
 if __name__ == "__main__":
     import uvicorn
