@@ -161,8 +161,32 @@ async def titano_loop():
     
     logger.info("📡 In attesa di dati in streaming da Market Streamer Engine (V6)...")
     
+    # HOT-RELOAD TRACKER
+    last_model_mtime = os.path.getmtime(model_path) if os.path.exists(model_path) else 0
+    
     async for message in pubsub.listen():
         if message['type'] == 'message':
+            # Controllo Hot-Reload del cervello
+            if os.path.exists(model_path):
+                current_mtime = os.path.getmtime(model_path)
+                if current_mtime > last_model_mtime:
+                    logger.info("🔥 HOT RELOAD: Trovato un nuovo cervello aggiornato! Iniezione in corso...")
+                    try:
+                        if not USIAMO_LA_V6:
+                            model = PPO.load(model_path, custom_objects={'MultiAssetFeatureExtractor': MultiAssetFeatureExtractor})
+                        else:
+                            model = PPO.load(
+                                model_path, 
+                                custom_objects={
+                                    'EstrazioneCaratteristiche': EstrazioneCaratteristiche,
+                                    'policy_kwargs': policy_kwargs
+                                }
+                            )
+                        last_model_mtime = current_mtime
+                        logger.info("✅ HOT RELOAD COMPLETATO: Titano sta usando i nuovi pesi neurali!")
+                    except Exception as e:
+                        logger.error(f"❌ Errore durante l'Hot Reload, continuo con il vecchio cervello: {e}")
+                        
             try:
                 data = json.loads(message['data'])
                 # data è un dizionario: { epic: [30 candele], epic2: [30 candele] }
