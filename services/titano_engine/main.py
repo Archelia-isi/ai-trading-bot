@@ -230,18 +230,18 @@ async def titano_loop():
                             
                             # Se lo possediamo già e Titano dice BUY, è un ACCUMULO.
                             action_log = "ACCUMULO (Pyramiding)" if is_owned else "NUOVA POSIZIONE"
-                            logger.info(f"🧠 [TITANO V6] {epic} -> {direction} ({action_log}) (Confidence: {confidence*100:.1f}%)")
+                            logger.info(f"🧠 [TITANO V7] {epic} -> {direction} ({action_log}) (Confidence: {confidence*100:.1f}%)")
                             
                             req = {
                                 "epic": epic, "direction": direction, "size_pct": dynamic_size, "leverage": 1, 
                                 "prob": confidence, "xgb_prob": float(xgb_prob), "news_sentiment": float(news_sentiment),
-                                "source": f"TITANO_V6_{'ACCUMULO' if is_owned else 'NUOVO'}"
+                                "source": f"TITANO_V7_{'ACCUMULO' if is_owned else 'NUOVO'}"
                             }
                             await r.publish("execution_requests", json.dumps(req))
                             await r.publish("audit_requests", json.dumps(req))
                         else:
-                            logger.info(f"🧠 [TITANO V6] {epic} -> {direction} (Confidence: {confidence*100:.1f}%)")
-                            req_ui = {"epic": epic, "direction": "FLAT", "size_pct": 0, "prob": confidence, "source": "TITANO_V6_SUPREMO"}
+                            logger.info(f"🧠 [TITANO V7] {epic} -> {direction} (Confidence: {confidence*100:.1f}%)")
+                            req_ui = {"epic": epic, "direction": "FLAT", "size_pct": 0, "prob": confidence, "source": "TITANO_V7_SUPREMO"}
                             await r.publish("audit_requests", json.dumps(req_ui))
             except Exception as e:
                 logger.error(f"Errore inferenza streaming: {e}")
