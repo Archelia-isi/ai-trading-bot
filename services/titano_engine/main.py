@@ -133,7 +133,7 @@ async def titano_loop():
             model = PPO.load(model_path, custom_objects={'MultiAssetFeatureExtractor': MultiAssetFeatureExtractor})
             logger.info("🧠 Modello Titano V5 caricato con successo!")
         else:
-            model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V6_Universale.zip")
+            model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V7_DayTrader.zip")
             
             # Ricostruiamo i kwargs della V6 Supremo per bypassare i bug di deserializzazione
             policy_kwargs = dict(
@@ -296,26 +296,26 @@ def download_model_from_drive(model_path: str):
 
 @app.on_event("startup")
 async def startup_event():
-    model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V6_Universale.zip")
+    model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V7_DayTrader.zip")
     
-    # 0. Download del modello pesante da Google Drive (se non esiste o se l'ID è cambiato)
-    if USIAMO_LA_V6:
-        id_path = model_path + ".id"
-        needs_download = True
-        
-        if os.path.exists(model_path) and os.path.exists(id_path):
-            with open(id_path, "r") as f:
-                if f.read().strip() == V6_DRIVE_FILE_ID:
-                    needs_download = False
-                    
-        if needs_download:
-            logger.info(f"Nuovo ID ({V6_DRIVE_FILE_ID}) o file mancante: scarico da Google Drive...")
-            os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            if os.path.exists(model_path):
-                os.remove(model_path)
-            download_model_from_drive(model_path)
-            with open(id_path, "w") as f:
-                f.write(V6_DRIVE_FILE_ID)
+    # 0. Download del modello disabilitato (file caricato manualmente)
+    # if USIAMO_LA_V6:
+    #     id_path = model_path + ".id"
+    #     needs_download = True
+    #     
+    #     if os.path.exists(model_path) and os.path.exists(id_path):
+    #         with open(id_path, "r") as f:
+    #             if f.read().strip() == V6_DRIVE_FILE_ID:
+    #                 needs_download = False
+    #                 
+    #     if needs_download:
+    #         logger.info(f"Nuovo ID ({V6_DRIVE_FILE_ID}) o file mancante: scarico da Google Drive...")
+    #         os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    #         if os.path.exists(model_path):
+    #             os.remove(model_path)
+    #         download_model_from_drive(model_path)
+    #         with open(id_path, "w") as f:
+    #             f.write(V6_DRIVE_FILE_ID)
     
     # 1. Start-up: Online Learning dai trade passati
     # perform_online_learning()

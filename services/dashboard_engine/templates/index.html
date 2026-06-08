@@ -514,6 +514,7 @@
     <div class="portfolio-panel" style="margin-top: 30px;">
         <div class="panel-header"><span class="panel-icon">⚙️</span> Pannello di Controllo Parametri</div>
         <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+            <button id="btn-toggle-bot" class="settings-btn" onclick="toggleBotStatus()" style="background-color: var(--pos-color); color: white; border-color: var(--pos-color); font-weight: bold; font-size: 1rem; padding: 10px 25px;">▶ AVVIA BOT</button>
             <button class="settings-btn" onclick="openModal('modal-scaglione-1')">⚙️ Scaglione 1 (Ricognizione)</button>
             <button class="settings-btn" onclick="openModal('modal-scaglione-2')">⚙️ Scaglione 2 (Convinzione Forte)</button>
             <button class="settings-btn" onclick="openModal('modal-scaglione-3')">⚙️ Scaglione 3 (Azione Estrema)</button>
@@ -603,6 +604,51 @@
         const odoPnl = new Odometer({ el: document.getElementById('val-pnl'), value: 0, format: '(,ddd).dd' });
 
         let currentVals = { total: 0, avail: 0, invest: 0, pnl: 0 };
+        let botIsRunning = true; // di default lo assumiamo acceso
+
+        // Fetch Impostazioni e Bot Status all'avvio
+        async function fetchDashboardSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    for (const [key, val] of Object.entries(data.settings)) {
+                        if (key === 'bot_active') {
+                            botIsRunning = (val !== 'false');
+                            updateBotButtonUI();
+                        }
+                    }
+                }
+            } catch (e) { console.error('Errore caricamento status:', e); }
+        }
+
+        function updateBotButtonUI() {
+            const btn = document.getElementById('btn-toggle-bot');
+            if (!btn) return;
+            if (botIsRunning) {
+                btn.innerHTML = '⏸ FERMA BOT';
+                btn.style.backgroundColor = 'var(--neg-color)';
+                btn.style.borderColor = 'var(--neg-color)';
+            } else {
+                btn.innerHTML = '▶ AVVIA BOT';
+                btn.style.backgroundColor = 'var(--pos-color)';
+                btn.style.borderColor = 'var(--pos-color)';
+            }
+        }
+
+        async function toggleBotStatus() {
+            botIsRunning = !botIsRunning;
+            updateBotButtonUI();
+            try {
+                await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ key: 'bot_active', value: botIsRunning ? 'true' : 'false' })
+                });
+            } catch (e) { console.error('Errore salvataggio stato bot:', e); }
+        }
+        
+        fetchDashboardSettings();
 
         function connect() {
             ws = new WebSocket(wsUrl);

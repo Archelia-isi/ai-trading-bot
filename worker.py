@@ -22,12 +22,22 @@ async def execution_manager_loop():
     async for message in pubsub.listen():
         if message['type'] == 'message':
             try:
+                # Check bot status first
+                bot_status_raw = await r.get("config:bot_active")
+                bot_active = True
+                if bot_status_raw and bot_status_raw.decode('utf-8') == 'false':
+                    bot_active = False
+
                 data = json.loads(message['data'])
                 epic = data.get("epic")
                 direction = data.get("direction")
                 size_pct = data.get("size_pct", 5.0)
                 
                 logger.info(f"Ricevuto ordine da Titano: {direction} su {epic} (Size: {size_pct}%)")
+                
+                if not bot_active:
+                    logger.warning(f"⏸ BOT FERMATO DALL'UTENTE. Ignoro l'ordine {direction} su {epic}.")
+                    continue
                 
                 open_positions = api.get_all_positions()
                 # Check if we already have a position open for this epic
