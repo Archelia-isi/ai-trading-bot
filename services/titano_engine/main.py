@@ -134,22 +134,8 @@ async def titano_loop():
             logger.info("🧠 Modello Titano V5 caricato con successo!")
         else:
             model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V7_DayTrader.zip")
-            
-            # Ricostruiamo i kwargs della V6 Supremo per bypassare i bug di deserializzazione
-            policy_kwargs = dict(
-                features_extractor_class=EstrazioneCaratteristiche,
-                features_extractor_kwargs=dict(dimensione_caratteristiche=2048),
-                net_arch=dict(pi=[2048, 2048, 1024], vf=[2048, 2048, 1024])
-            )
-            
-            model = PPO.load(
-                model_path, 
-                custom_objects={
-                    'EstrazioneCaratteristiche': EstrazioneCaratteristiche,
-                    'policy_kwargs': policy_kwargs
-                }
-            )
-            logger.info("🧠 Modello Titano V6 UNIVERSALE caricato!")
+            model = PPO.load(model_path)
+            logger.info("🧠 Modello Titano V7 (DayTrader) caricato!")
     except Exception as e:
         logger.error(f"Errore caricamento modello: {e}")
         return
@@ -176,15 +162,9 @@ async def titano_loop():
                         if not USIAMO_LA_V6:
                             model = PPO.load(model_path, custom_objects={'MultiAssetFeatureExtractor': MultiAssetFeatureExtractor})
                         else:
-                            model = PPO.load(
-                                model_path, 
-                                custom_objects={
-                                    'EstrazioneCaratteristiche': EstrazioneCaratteristiche,
-                                    'policy_kwargs': policy_kwargs
-                                }
-                            )
+                            model = PPO.load(model_path)
                         last_model_mtime = current_mtime
-                        logger.info("✅ HOT RELOAD COMPLETATO: Titano sta usando i nuovi pesi neurali!")
+                        logger.info("✅ HOT RELOAD COMPLETATO: Titano sta usando i nuovi pesi neurali V7!")
                     except Exception as e:
                         logger.error(f"❌ Errore durante l'Hot Reload, continuo con il vecchio cervello: {e}")
                         
