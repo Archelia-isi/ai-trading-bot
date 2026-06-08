@@ -40,40 +40,64 @@ async def execution_manager_loop():
                     continue
                 
                 open_positions = api.get_all_positions()
-                # Check if we already have a position open for this epic
                 existing_pos = None
+                existing_direction = None
+                
                 for pos in open_positions:
-                    if pos.get('market', {}).get('epic') == epic:
+                    market_info = pos.get('market', {})
+                    if market_info.get('epic') == epic:
                         existing_pos = pos
+                        existing_direction = pos.get('position', {}).get('direction', '') # "BUY" o "SELL"
                         break
                         
+                # FUNZIONE DI APPOGGIO PER PIAZZARE ORDINI
+                def esegui_ordine(dir_str):
+                    balance = api.get_account_balance()
+                    cash_to_invest = balance * (size_pct / 100.0)
+                    price = api.get_market_price(epic)
+                    if price > 0:
+                        qty = cash_to_invest / price
+                        min_size = api.get_min_deal_size(epic)
+                        if qty < min_size:
+                            qty = min_size 
+                        
+                        logger.info(f"Esecuzione {dir_str} su {epic} | Qty: {qty} (Investimento stimato: €{cash_to_invest:.2f})")
+                        res = api.place_order(epic=epic, direction=dir_str, size=qty)
+                        if "dealReference" in res:
+                            logger.info(f"✅ Ordine {dir_str} Eseguito con successo su {epic}!")
+                        else:
+                            logger.error(f"❌ Fallimento Esecuzione {dir_str} su {epic}: {res}")
+
                 if direction == "SELL":
                     if existing_pos:
-                        logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione aperta.")
-                        api.close_position_by_epic(epic)
+                        if existing_direction == "BUY":
+                            logger.info(f"Inversione: Chiudo LONG su {epic} e apro SHORT.")
+                            api.close_position_by_epic(epic)
+                            esegui_ordine("SELL")
+                        else:
+                            logger.info(f"Posizione SHORT già aperta su {epic}. Ignoro segnale SELL ripetuto.")
                     else:
-                        logger.info(f"Ignorato SELL su {epic} (nessuna posizione aperta da chiudere).")
+                        logger.info(f"Apro nuova posizione SHORT su {epic}.")
+                        esegui_ordine("SELL")
                 
                 elif direction == "BUY":
                     if existing_pos:
-                        logger.info(f"Posizione già aperta su {epic}. Ignoro il segnale di BUY ripetuto.")
+                        if existing_direction == "SELL":
+                            logger.info(f"Inversione: Chiudo SHORT su {epic} e apro LONG.")
+                            api.close_position_by_epic(epic)
+                            esegui_ordine("BUY")
+                        else:
+                            logger.info(f"Posizione LONG già aperta su {epic}. Ignoro segnale BUY ripetuto.")
                     else:
-                        balance = api.get_account_balance()
-                        cash_to_invest = balance * (size_pct / 100.0)
+                        logger.info(f"Apro nuova posizione LONG su {epic}.")
+                        esegui_ordine("BUY")
                         
-                        price = api.get_market_price(epic)
-                        if price > 0:
-                            qty = cash_to_invest / price
-                            min_size = api.get_min_deal_size(epic)
-                            if qty < min_size:
-                                qty = min_size # Forza dimensione minima per permettere al trade di passare
-                            
-                            logger.info(f"Esecuzione BUY su {epic} | Qty: {qty} (Investimento stimato: €{cash_to_invest:.2f})")
-                            res = api.place_order(epic=epic, direction="BUY", size=qty)
-                            if "dealReference" in res:
-                                logger.info(f"✅ Ordine Eseguito con successo su {epic}!")
-                            else:
-                                logger.error(f"❌ Fallimento Esecuzione su {epic}: {res}")
+                elif direction == "FLAT":
+                    if existing_pos:
+                        logger.info(f"Titano richiede FLAT. Chiudo la posizione {existing_direction} su {epic}.")
+                        api.close_position_by_epic(epic)
+                    else:
+                        logger.debug(f"Segnale FLAT ignorato (nessuna posizione aperta su {epic}).")
             except Exception as e:
                 logger.error(f"Errore durante l'elaborazione dell'ordine: {e}")
 

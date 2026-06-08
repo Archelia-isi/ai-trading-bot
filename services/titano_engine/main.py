@@ -227,22 +227,22 @@ async def titano_loop():
                         
                         if direction != "FLAT":
                             dynamic_size = round(confidence * 10.0, 2)
-                            
-                            # Se lo possediamo già e Titano dice BUY, è un ACCUMULO.
                             action_log = "ACCUMULO (Pyramiding)" if is_owned else "NUOVA POSIZIONE"
-                            logger.info(f"🧠 [TITANO V7] {epic} -> {direction} ({action_log}) (Confidence: {confidence*100:.1f}%)")
+                            logger.info(f"🧠 [TITANO V8] {epic} -> {direction} ({action_log}) (Confidence: {confidence*100:.1f}%)")
                             
                             req = {
                                 "epic": epic, "direction": direction, "size_pct": dynamic_size, "leverage": 1, 
                                 "prob": confidence, "xgb_prob": float(xgb_prob), "news_sentiment": float(news_sentiment),
-                                "source": f"TITANO_V7_{'ACCUMULO' if is_owned else 'NUOVO'}"
+                                "source": f"TITANO_V8_{'ACCUMULO' if is_owned else 'NUOVO'}"
                             }
                             await r.publish("execution_requests", json.dumps(req))
                             await r.publish("audit_requests", json.dumps(req))
                         else:
-                            logger.info(f"🧠 [TITANO V7] {epic} -> {direction} (Confidence: {confidence*100:.1f}%)")
-                            req_ui = {"epic": epic, "direction": "FLAT", "size_pct": 0, "prob": confidence, "source": "TITANO_V7_SUPREMO"}
-                            await r.publish("audit_requests", json.dumps(req_ui))
+                            # Invia segnale FLAT anche al worker per chiudere eventuali posizioni
+                            logger.info(f"🧠 [TITANO V8] {epic} -> {direction} (Confidence: {confidence*100:.1f}%)")
+                            req = {"epic": epic, "direction": "FLAT", "size_pct": 0, "prob": confidence, "source": "TITANO_V8_FLAT"}
+                            await r.publish("execution_requests", json.dumps(req))
+                            await r.publish("audit_requests", json.dumps(req))
             except Exception as e:
                 logger.error(f"Errore inferenza streaming: {e}")
 
