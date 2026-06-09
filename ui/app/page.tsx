@@ -142,9 +142,9 @@ export default function Dashboard() {
             </TableHead>
             <TableBody>
               {ordiniMock.map((ordine) => (
-                <TableRow 
+                <tr 
                   key={ordine.id} 
-                  className="hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100"
+                  className="hover:bg-slate-100 cursor-pointer transition-colors border-b border-slate-200"
                   onClick={() => apriDettagli(ordine)}
                 >
                   <TableCell className="font-bold text-slate-900">{ordine.asset}</TableCell>
@@ -164,7 +164,7 @@ export default function Dashboard() {
                   <TableCell className={ordine.roe >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
                     {ordine.roe >= 0 ? "+" : ""}{ordine.roe}%
                   </TableCell>
-                </TableRow>
+                </tr>
               ))}
             </TableBody>
           </Table>
@@ -172,7 +172,7 @@ export default function Dashboard() {
 
         {/* Scatola Nera (Pop-up) */}
         <Dialog open={isOpen} onClose={(val) => setIsOpen(val)}>
-          <DialogPanel className="bg-white p-6 rounded-lg shadow-lg border border-slate-200 max-w-2xl mx-auto">
+          <DialogPanel className="bg-white p-6 rounded-lg shadow-lg border border-slate-200 max-w-2xl mx-auto z-50 relative">
             <Title className="text-xl font-bold text-slate-900 mb-6 border-b border-slate-200 pb-3">
               Report Operativo: {ordineSelezionato?.asset} - {ordineSelezionato?.direzione}
             </Title>
