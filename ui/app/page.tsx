@@ -172,32 +172,51 @@ export default function Dashboard() {
 
         {/* Scatola Nera (Pop-up) */}
         <Dialog open={isOpen} onClose={(val) => setIsOpen(val)} static={true}>
-          <DialogPanel className="bg-white p-6 rounded-lg border border-slate-200 shadow-xl max-w-2xl">
-            <Title className="text-xl font-bold text-slate-900 mb-4 border-b pb-2">Analisi Quantitativa (La Scatola Nera)</Title>
+          <DialogPanel className="bg-white p-6 rounded-lg shadow-lg border border-slate-200 max-w-2xl mx-auto">
+            <Title className="text-xl font-bold text-slate-900 mb-6 border-b border-slate-200 pb-3">
+              Report Operativo: {ordineSelezionato?.asset} - {ordineSelezionato?.direzione}
+            </Title>
+            
             {ordineSelezionato && (
-              <div className="space-y-4">
-                <Grid numItems={2} className="gap-4">
-                  <div className="bg-slate-50 p-4 rounded border border-slate-100">
-                    <Text className="text-slate-500 text-sm">Probabilità XGBoost</Text>
-                    <Text className="text-slate-900 font-bold text-lg">{(ordineSelezionato.prob * 100).toFixed(1)}%</Text>
+              <div className="space-y-6">
+                <div>
+                  <Text className="text-slate-700 font-semibold mb-3">Sezione 1 - Analisi Quantitativa</Text>
+                  <Grid numItems={3} className="gap-4">
+                    <div className="bg-slate-50 p-4 rounded-md border border-slate-100">
+                      <Text className="text-slate-500 text-sm">Probabilità XGBoost</Text>
+                      <Text className="text-slate-900 font-bold text-lg">
+                        {(ordineSelezionato.prob * 100).toFixed(0)}% {ordineSelezionato.prob >= 0.5 ? "Bullish" : "Bearish"}
+                      </Text>
+                    </div>
+                    <div className="bg-slate-50 p-4 rounded-md border border-slate-100">
+                      <Text className="text-slate-500 text-sm">Sentiment NLP</Text>
+                      <Text className="text-slate-900 font-bold text-lg">
+                        {ordineSelezionato.sent > 0 ? "+" : ""}{ordineSelezionato.sent.toFixed(2)} {ordineSelezionato.sent > 0 ? "Euforia" : "Panico"}
+                      </Text>
+                    </div>
+                    <div className="bg-slate-50 p-4 rounded-md border border-slate-100">
+                      <Text className="text-slate-500 text-sm">Latenza di Esecuzione</Text>
+                      <Text className="text-slate-900 font-bold text-lg">{ordineSelezionato.lat}</Text>
+                    </div>
+                  </Grid>
+                </div>
+
+                <div>
+                  <Text className="text-slate-700 font-semibold mb-3">Sezione 2 - Catalizzatore News</Text>
+                  <div className="bg-blue-50 p-4 rounded-md border border-blue-100">
+                    <Text className="text-blue-800 text-sm font-semibold mb-1">Notizia Rilevata (Traduzione IT):</Text>
+                    <Text className="text-slate-800 italic text-sm">"{ordineSelezionato.news}"</Text>
                   </div>
-                  <div className="bg-slate-50 p-4 rounded border border-slate-100">
-                    <Text className="text-slate-500 text-sm">Sentiment (NLP)</Text>
-                    <Text className="text-slate-900 font-bold text-lg">{ordineSelezionato.sent > 0 ? "+" : ""}{ordineSelezionato.sent.toFixed(2)}</Text>
-                  </div>
-                </Grid>
-                <div className="bg-blue-50 p-4 rounded border border-blue-100 mt-4">
-                  <Text className="text-blue-800 text-sm font-semibold mb-1">Notizia Finanziaria</Text>
-                  <Text className="text-slate-800 italic">"{ordineSelezionato.news}"</Text>
                 </div>
               </div>
             )}
-            <div className="mt-6 flex justify-end">
+            
+            <div className="mt-8 flex justify-end">
               <button 
-                className="bg-slate-900 text-white px-5 py-2 rounded font-medium hover:bg-slate-800 transition shadow-sm"
+                className="bg-slate-900 text-white px-6 py-2 rounded-md font-medium hover:bg-slate-800 transition shadow-sm"
                 onClick={() => setIsOpen(false)}
               >
-                Chiudi Telemetria
+                Chiudi
               </button>
             </div>
           </DialogPanel>
