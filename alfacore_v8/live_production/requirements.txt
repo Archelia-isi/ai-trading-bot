@@ -1,0 +1,11 @@
+redis==5.0.3
+requests==2.31.0
+python-dotenv==1.0.1
+transformers==4.39.3
+torch==2.2.2
+xgboost==2.0.3
+numpy==1.26.4
+pandas==2.2.1
+ccxt==4.2.82
+SQLAlchemy==2.0.29
+psycopg2-binary==2.9.9
