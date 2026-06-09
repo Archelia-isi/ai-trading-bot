@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Card, Title, Text, Grid, Metric, Table, TableHead, TableRow, TableHeaderCell, TableBody, TableCell, Badge, Dialog, DialogPanel, Switch } from "@tremor/react";
+import { Card, Title, Text, Grid, Metric, Table, TableHead, TableRow, TableHeaderCell, TableBody, TableCell, Badge, Switch } from "@tremor/react";
 import { createChart, IChartApi, CandlestickSeriesPartialOptions, ColorType } from "lightweight-charts";
 
 // Mock dati JSON
@@ -171,13 +171,13 @@ export default function Dashboard() {
         </Card>
 
         {/* Scatola Nera (Pop-up) */}
-        <Dialog open={isOpen} onClose={(val) => setIsOpen(val)}>
-          <DialogPanel className="bg-white p-6 rounded-lg shadow-lg border border-slate-200 max-w-2xl mx-auto z-50 relative">
-            <Title className="text-xl font-bold text-slate-900 mb-6 border-b border-slate-200 pb-3">
-              Report Operativo: {ordineSelezionato?.asset} - {ordineSelezionato?.direzione}
-            </Title>
-            
-            {ordineSelezionato && (
+        {isOpen && ordineSelezionato && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+            <div className="bg-white p-6 rounded-lg shadow-2xl border border-slate-200 max-w-2xl w-full mx-4 relative">
+              <Title className="text-xl font-bold text-slate-900 mb-6 border-b border-slate-200 pb-3">
+                Report Operativo: {ordineSelezionato.asset} - {ordineSelezionato.direzione}
+              </Title>
+
               <div className="space-y-6">
                 <div>
                   <Text className="text-slate-700 font-semibold mb-3">Sezione 1 - Analisi Quantitativa</Text>
@@ -209,18 +209,18 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-            )}
-            
-            <div className="mt-8 flex justify-end">
-              <button 
-                className="bg-slate-900 text-white px-6 py-2 rounded-md font-medium hover:bg-slate-800 transition shadow-sm"
-                onClick={() => setIsOpen(false)}
-              >
-                Chiudi
-              </button>
+
+              <div className="mt-8 flex justify-end">
+                <button 
+                  className="bg-slate-900 text-white px-6 py-2 rounded-md font-medium hover:bg-slate-800 transition shadow-sm"
+                  onClick={() => setIsOpen(false)}
+                >
+                  Chiudi
+                </button>
+              </div>
             </div>
-          </DialogPanel>
-        </Dialog>
+          </div>
+        )}
       </div>
 
       {/* Telemetria di Sistema (Footer) */}
