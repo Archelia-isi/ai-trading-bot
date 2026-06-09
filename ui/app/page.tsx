@@ -171,7 +171,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Scatola Nera (Pop-up) */}
-        <Dialog open={isOpen} onClose={(val) => setIsOpen(val)} static={true}>
+        <Dialog open={isOpen} onClose={(val) => setIsOpen(val)}>
           <DialogPanel className="bg-white p-6 rounded-lg shadow-lg border border-slate-200 max-w-2xl mx-auto">
             <Title className="text-xl font-bold text-slate-900 mb-6 border-b border-slate-200 pb-3">
               Report Operativo: {ordineSelezionato?.asset} - {ordineSelezionato?.direzione}
