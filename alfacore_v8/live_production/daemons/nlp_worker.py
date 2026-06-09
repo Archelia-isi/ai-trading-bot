@@ -54,6 +54,7 @@ while True:
         ema_precedente = float(r.get('live_crypto_sentiment') or 0.0)
         nuova_ema = (impatto_grezzo * ALPHA) + (ema_precedente * (1 - ALPHA))
         
+        # Salvataggio dell'EMA su Redis a latenza zero
         r.set('live_crypto_sentiment', nuova_ema)
         
         if impatto_grezzo != 0.0:
@@ -65,6 +66,7 @@ while True:
         print(f"[Sistema NLP] Impatto: {impatto_grezzo:.2f} | EMA: {nuova_ema:.3f} | Minuti dall'ultima news: {contatore_minuti}")
         
     except Exception as e:
+        # try/except per evitare crash del server
         print(f"Errore imprevisto nel ciclo NLP: {e}. Attendo il prossimo ciclo.")
         
     time.sleep(60)

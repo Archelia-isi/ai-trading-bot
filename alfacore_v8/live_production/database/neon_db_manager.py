@@ -10,7 +10,7 @@ load_dotenv()
 Base = declarative_base()
 
 class RegistroOperazioni(Base):
-    __tablename__ = 'registro_operazioni'
+    __tablename__ = 'trade_audit'
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp_esecuzione = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     asset = Column(String(50))
@@ -19,7 +19,7 @@ class RegistroOperazioni(Base):
     leva_finanziaria = Column(Float)
     prezzo_ingresso = Column(Float)
     slippage_stimato = Column(Float)
-    scatola_nera_json = Column(Text)  # Snapshot delle feature per analisi quantitativa
+    scatola_nera_json = Column(Text)  # Snapshot completo in JSON dei dati visti dall'IA
 
 class GestoreNeonDB:
     def __init__(self):
@@ -29,7 +29,6 @@ class GestoreNeonDB:
             db_url = "sqlite:///audit_locale.db"
             self.motore = create_engine(db_url)
         else:
-            # pool_pre_ping previene le cadute di connessione tipiche del Serverless PostgreSQL
             self.motore = create_engine(db_url, pool_pre_ping=True)
             
         Base.metadata.create_all(self.motore)
@@ -49,9 +48,9 @@ class GestoreNeonDB:
             )
             sessione.add(nuova_operazione)
             sessione.commit()
-            print(f"Audit completato: Operazione su {asset} salvata nel ledger permanente.")
+            print(f"Audit completato: Operazione su {asset} salvata nel database Neon DB (PostgreSQL Serverless).")
         except Exception as e:
             sessione.rollback()
-            print(f"Errore critico durante la scrittura dell'audit: {e}")
+            print(f"Errore critico durante la scrittura dell'audit su database: {e}")
         finally:
             sessione.close()
