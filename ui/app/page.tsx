@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Card, Title, Text, Grid, Metric, Table, TableHead, TableRow, TableHeaderCell, TableBody, TableCell, Badge, Dialog, DialogPanel, Switch } from "@tremor/react";
-import { createChart, IChartApi, CandlestickSeriesPartialOptions } from "lightweight-charts";
+import { createChart, IChartApi, CandlestickSeriesPartialOptions, ColorType } from "lightweight-charts";
 
 // Mock dati JSON
 const ordiniMock = [
@@ -24,7 +24,7 @@ export default function Dashboard() {
         width: chartContainerRef.current.clientWidth,
         height: 400,
         layout: {
-          background: { type: 'solid', color: '#ffffff' },
+          background: { type: ColorType.Solid, color: '#ffffff' },
           textColor: '#333',
         },
         grid: {
