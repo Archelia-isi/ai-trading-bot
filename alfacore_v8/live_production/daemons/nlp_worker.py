@@ -2,68 +2,69 @@ import os
 import time
 import redis
 import requests
+from dotenv import load_dotenv
 from transformers import pipeline
 
-print("🧠 Avvio NLP Worker Daemon (HuggingFace)...")
+load_dotenv()
 
-# Inizializza Redis
-redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+print("Avvio Demone NLP (HuggingFace CPU-Bound)...")
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 try:
-    r = redis.from_url(redis_url, decode_responses=True)
+    r = redis.from_url(REDIS_URL, decode_responses=True)
     r.ping()
-    print("✅ Connesso a Redis per NLP Worker")
+    print("Connessione a Redis stabilita per il Worker NLP.")
 except Exception as e:
-    print(f"❌ Impossibile connettersi a Redis ({redis_url}): {e}")
-    exit(1)
+    print(f"Errore critico di connessione a Redis: {e}")
+    raise e
 
-# Inizializza Pipeline HF (Ottimizzata CPU per container generici)
-model_name = "distilbert/distilbert-base-uncased-finetuned-sst-2-english"
-nlp_pipe = pipeline("sentiment-analysis", model=model_name, device=-1)
+nlp_pipe = pipeline("sentiment-analysis", model="distilbert/distilbert-base-uncased-finetuned-sst-2-english", device=-1)
 
 EMA_SPAN = 14
-alpha = 2 / (EMA_SPAN + 1)
+ALPHA = 2 / (EMA_SPAN + 1)
 
-# Inizializza stato Redis se vuoto
-if not r.exists('live_crypto_sentiment'): r.set('live_crypto_sentiment', 0.0)
-if not r.exists('crypto_bars_since_news'): r.set('crypto_bars_since_news', 0)
+if not r.exists('live_crypto_sentiment'):
+    r.set('live_crypto_sentiment', 0.0)
+if not r.exists('crypto_bars_since_news'):
+    r.set('crypto_bars_since_news', 0)
 
-def fetch_live_news():
-    """Simula una chiamata API a CryptoPanic o simile. Per produzione vera inserire API Key"""
+def scarica_notizie():
     api_key = os.getenv("CRYPTOPANIC_API_KEY")
     if not api_key:
-        return [] # Ritorna vuoto se non c'e' key
+        return []
     try:
-        url = f"https://cryptopanic.com/api/v1/posts/?auth_token={api_key}&kind=news"
-        res = requests.get(url, timeout=10)
+        res = requests.get(f"https://cryptopanic.com/api/v1/posts/?auth_token={api_key}&kind=news", timeout=10)
+        res.raise_for_status()
         return [post['title'] for post in res.json().get('results', [])[:5]]
-    except:
+    except Exception as e:
+        print(f"Errore durante lo scaricamento delle notizie: {e}")
         return []
 
 while True:
     try:
-        news_titles = fetch_live_news()
+        titoli = scarica_notizie()
+        impatto_grezzo = 0.0
         
-        raw_shock = 0.0
-        if news_titles:
-            results = nlp_pipe(news_titles)
-            for res in results:
+        if titoli:
+            risultati = nlp_pipe(titoli)
+            for res in risultati:
                 score = res['score'] if res['label'] == 'POSITIVE' else -res['score']
-                raw_shock += score
+                impatto_grezzo += score
                 
-        # Calcolo EMA
-        prev_ema = float(r.get('live_crypto_sentiment') or 0.0)
-        new_ema = (raw_shock * alpha) + (prev_ema * (1 - alpha))
-        r.set('live_crypto_sentiment', new_ema)
+        ema_precedente = float(r.get('live_crypto_sentiment') or 0.0)
+        nuova_ema = (impatto_grezzo * ALPHA) + (ema_precedente * (1 - ALPHA))
         
-        # Gestione sparsità temporale
-        if raw_shock != 0.0:
+        r.set('live_crypto_sentiment', nuova_ema)
+        
+        if impatto_grezzo != 0.0:
             r.set('crypto_bars_since_news', 0)
         else:
             r.incr('crypto_bars_since_news')
             
-        print(f"📊 [NLP] Shock: {raw_shock:.2f} | EMA: {new_ema:.3f} | Bars: {r.get('crypto_bars_since_news')}")
+        contatore_minuti = r.get('crypto_bars_since_news')
+        print(f"[Sistema NLP] Impatto: {impatto_grezzo:.2f} | EMA: {nuova_ema:.3f} | Minuti dall'ultima news: {contatore_minuti}")
         
     except Exception as e:
-        print(f"⚠️ Errore NLP Worker Loop: {e}")
+        print(f"Errore imprevisto nel ciclo NLP: {e}. Attendo il prossimo ciclo.")
         
-    time.sleep(60) # Gira 1 volta al minuto per non esaurire rate limits
+    time.sleep(60)
