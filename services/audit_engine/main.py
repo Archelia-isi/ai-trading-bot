@@ -176,13 +176,32 @@ async def execution_manager_loop():
                                 existing_pos = pos
                                 break
                                 
+                        # Check Sistema Armato all'inizio!
+                        is_armed_str = await r.get("system_armed")
+                        is_armed = False
+                        if is_armed_str is not None:
+                            is_armed = (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
+
+                        if direction == "FLAT":
+                            if existing_pos:
+                                if not is_armed:
+                                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo Chiusura FLAT su {epic}")
+                                else:
+                                    logger.info(f"Titano ha azzerato l'esposizione. Chiusura posizione su {epic}.")
+                                    api.close_position_by_epic(epic)
+                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Totale", "status": "APPROVED"}))
+                            continue
+
                         if direction == "SELL":
                             existing_dir = existing_pos.get('position', {}).get('direction', 'BUY') if existing_pos else None
                             
                             if existing_dir == "BUY":
-                                logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione Long aperta.")
-                                api.close_position_by_epic(epic)
-                                await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Long", "status": "APPROVED"}))
+                                if not is_armed:
+                                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo Chiusura Long aperta su {epic}")
+                                else:
+                                    logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione Long aperta.")
+                                    api.close_position_by_epic(epic)
+                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Long", "status": "APPROVED"}))
                             
                             action_str = "SELL (Accumulo)" if existing_dir == "SELL" else "SELL (Stop & Reverse)" if existing_dir == "BUY" else "SELL"
                             
@@ -196,12 +215,6 @@ async def execution_manager_loop():
                                 if qty < min_size:
                                     qty = min_size
                                 
-                                # Check Sistema Armato prima di lanciare su Capital.com
-                                is_armed_str = await r.get("system_armed")
-                                is_armed = False
-                                if is_armed_str is not None:
-                                    is_armed = (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
-
                                 if not is_armed:
                                     logger.info(f"🛡️ DRY RUN (Disarmato): Simulo {action_str} su {epic} | Qty: {qty}")
                                     res = {"dealReference": f"dry_run_{epic}_{direction}"}
@@ -230,9 +243,12 @@ async def execution_manager_loop():
                             existing_dir = existing_pos.get('position', {}).get('direction', 'BUY') if existing_pos else None
                             
                             if existing_dir == "SELL":
-                                logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione Short aperta.")
-                                api.close_position_by_epic(epic)
-                                await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Short", "status": "APPROVED"}))
+                                if not is_armed:
+                                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo Chiusura Short aperta su {epic}")
+                                else:
+                                    logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione Short aperta.")
+                                    api.close_position_by_epic(epic)
+                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Short", "status": "APPROVED"}))
                                 
                             action_str = "BUY (Accumulo)" if existing_dir == "BUY" else "BUY (Stop & Reverse)" if existing_dir == "SELL" else "BUY"
                             
@@ -246,12 +262,6 @@ async def execution_manager_loop():
                                 if qty < min_size:
                                     qty = min_size
                                 
-                                # Check Sistema Armato prima di lanciare su Capital.com
-                                is_armed_str = await r.get("system_armed")
-                                is_armed = False
-                                if is_armed_str is not None:
-                                    is_armed = (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
-
                                 if not is_armed:
                                     logger.info(f"🛡️ DRY RUN (Disarmato): Simulo {action_str} su {epic} | Qty: {qty}")
                                     res = {"dealReference": f"dry_run_{epic}_{direction}"}
@@ -263,7 +273,6 @@ async def execution_manager_loop():
                                     logger.info(f"✅ Ordine {action_str} Eseguito con successo su {epic}!")
                                     await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "APPROVED"}))
                                     
-                                    # Genera la Genesi del Trade per il Supervisore
                                     genesis_req = {
                                         "epic": epic,
                                         "direction": direction,

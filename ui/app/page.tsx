@@ -144,12 +144,24 @@ export default function Dashboard() {
       <div className="flex-grow">
         <div className="flex justify-between items-center mb-8">
           <Title className="text-3xl font-bold text-slate-900">Alfacore V8 - Terminale Istituzionale</Title>
-          <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-            <Text className="font-medium text-slate-600">Interruttore Generale</Text>
-            <Switch checked={sistemaArmato} onChange={handleSistemaArmatoToggle} color="emerald" />
-            <Badge color={sistemaArmato ? "emerald" : "rose"} className="text-sm font-bold">
-              {sistemaArmato ? "SISTEMA ARMATO" : "SISTEMA DISARMATO (DRY RUN)"}
-            </Badge>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => handleSistemaArmatoToggle(!sistemaArmato)}
+              className={`relative overflow-hidden group px-6 py-3 rounded-xl font-extrabold tracking-wide text-white shadow-xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-1 ${
+                sistemaArmato 
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-500/40 ring-4 ring-emerald-500/30" 
+                  : "bg-gradient-to-r from-rose-500 to-red-600 shadow-rose-500/40 ring-4 ring-rose-500/30"
+              }`}
+            >
+              <div className="absolute inset-0 w-full h-full bg-white/20 group-hover:translate-x-full transition-transform duration-700 ease-out -skew-x-12 -translate-x-full"></div>
+              <div className="flex items-center gap-3 relative z-10">
+                <div className="flex items-center justify-center">
+                  <div className={`w-3 h-3 rounded-full ${sistemaArmato ? "bg-white animate-ping absolute" : "hidden"}`}></div>
+                  <div className={`w-3 h-3 rounded-full relative z-10 ${sistemaArmato ? "bg-white" : "bg-red-200"}`}></div>
+                </div>
+                <span>{sistemaArmato ? "SISTEMA ARMATO (LIVE)" : "KILL SWITCH (DRY RUN)"}</span>
+              </div>
+            </button>
           </div>
         </div>
 
