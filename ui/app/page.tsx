@@ -67,6 +67,17 @@ export default function Dashboard() {
     }
   };
 
+  const handleResetStats = async () => {
+    if (confirm("Sei sicuro di voler azzerare le statistiche? Il capitale di base verrà resettato al saldo attuale su Capital.com e il PnL ripartirà da zero.")) {
+      try {
+        await fetch("/api/reset", { method: "POST" });
+        alert("Statistiche azzerate con successo. Attendi qualche secondo per il refresh dei dati.");
+      } catch (e) {
+        console.error("Failed to reset stats");
+      }
+    }
+  };
+
   useEffect(() => {
     if (chartContainerRef.current) {
       const chart = createChart(chartContainerRef.current, {
@@ -145,6 +156,12 @@ export default function Dashboard() {
         <div className="flex justify-between items-center mb-8">
           <Title className="text-3xl font-bold text-slate-900">Alfacore V8 - Terminale Istituzionale</Title>
           <div className="flex items-center gap-4">
+            <button
+              onClick={handleResetStats}
+              className="px-4 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition-colors"
+            >
+              🔄 Azzera PnL
+            </button>
             <button
               onClick={() => handleSistemaArmatoToggle(!sistemaArmato)}
               className={`relative overflow-hidden group px-6 py-3 rounded-xl font-extrabold tracking-wide text-white shadow-xl transition-all duration-300 transform hover:-translate-y-1 active:translate-y-1 ${
