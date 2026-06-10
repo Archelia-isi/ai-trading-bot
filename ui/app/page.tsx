@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Card, Title, Text, Grid, Metric, Table, TableHead, TableRow, TableHeaderCell, TableBody, TableCell, Badge, Switch, Dialog, DialogPanel } from "@tremor/react";
+import { Card, Title, Text, Grid, Metric, Table, TableHead, TableRow, TableHeaderCell, TableBody, TableCell, Badge, Switch } from "@tremor/react";
 import { createChart, IChartApi, CandlestickSeriesPartialOptions, ColorType } from "lightweight-charts";
 
 export default function Dashboard() {
@@ -249,14 +249,14 @@ export default function Dashboard() {
           <Table className="mt-5">
             <TableHead>
               <TableRow className="border-b border-slate-200">
-                <TableHeaderCell className="text-slate-500 font-medium">Asset</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">Direzione</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">Margine Investito</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">Leva</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">Esposizione Nominale</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">Size %</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">Profitti/Perdite (€)</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">ROE (%)</TableHeaderCell>
+                <TableHeaderCell className="text-left text-slate-500 font-medium">Asset</TableHeaderCell>
+                <TableHeaderCell className="text-center text-slate-500 font-medium">Direzione</TableHeaderCell>
+                <TableHeaderCell className="text-right text-slate-500 font-medium">Margine Investito</TableHeaderCell>
+                <TableHeaderCell className="text-right text-slate-500 font-medium">Leva</TableHeaderCell>
+                <TableHeaderCell className="text-right text-slate-500 font-medium">Esposizione Nominale</TableHeaderCell>
+                <TableHeaderCell className="text-right text-slate-500 font-medium">Size %</TableHeaderCell>
+                <TableHeaderCell className="text-right text-slate-500 font-medium">Profitti/Perdite (€)</TableHeaderCell>
+                <TableHeaderCell className="text-right text-slate-500 font-medium">ROE (%)</TableHeaderCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -273,20 +273,20 @@ export default function Dashboard() {
                   className="hover:bg-slate-100 transition-colors border-b border-slate-200 cursor-pointer"
                   onClick={() => handleRowClick(ordine.epic)}
                 >
-                  <TableCell className="font-bold text-slate-900">{ordine.epic}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-left font-bold text-slate-900">{ordine.epic}</TableCell>
+                  <TableCell className="text-center">
                     <Badge color={ordine.direction === "BUY" ? "emerald" : "rose"}>
                       {ordine.direction}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-slate-700">{formatEuro(ordine.margin_usd)}</TableCell>
-                  <TableCell className="text-slate-700">{ordine.leverage}x</TableCell>
-                  <TableCell className="text-slate-700">{formatEuro(ordine.notional_usd)}</TableCell>
-                  <TableCell className="text-slate-700">{formatPct(ordine.size)}</TableCell>
-                  <TableCell className={ordine.upl >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
+                  <TableCell className="text-right text-slate-700">{formatEuro(ordine.margin_usd)}</TableCell>
+                  <TableCell className="text-right text-slate-700">{ordine.leverage}x</TableCell>
+                  <TableCell className="text-right text-slate-700">{formatEuro(ordine.notional_usd)}</TableCell>
+                  <TableCell className="text-right text-slate-700">{formatPct(ordine.size)}</TableCell>
+                  <TableCell className={`text-right ${ordine.upl >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}`}>
                     {formatEuro(ordine.upl)}
                   </TableCell>
-                  <TableCell className={ordine.pnl_pct >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
+                  <TableCell className={`text-right ${ordine.pnl_pct >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}`}>
                     {formatPct(ordine.pnl_pct)}
                   </TableCell>
                 </TableRow>
@@ -301,47 +301,59 @@ export default function Dashboard() {
         <span className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isLoading ? 'bg-amber-500' : isOffline ? 'bg-rose-500' : 'bg-emerald-500'}`}></div> Motore Python: {isLoading ? "Attesa..." : isOffline ? "Disconnesso" : "Online"}</span>
       </div>
 
-      <Dialog open={isGenesisModalOpen} onClose={() => setIsGenesisModalOpen(false)}>
-        <DialogPanel className="max-w-md">
-          <Title className="mb-4">Genesi Operazione</Title>
-          {genesisLoading ? (
-            <Text>Estrazione memoria in corso...</Text>
-          ) : genesisData ? (
-            <div className="space-y-4">
-              <div>
-                <Text className="font-medium">Asset</Text>
-                <Text className="font-bold text-lg">{genesisData.epic}</Text>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Text className="font-medium">Direzione</Text>
-                  <Badge color={genesisData.direction === "BUY" ? "emerald" : "rose"}>
-                    {genesisData.direction}
-                  </Badge>
+      {isGenesisModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md border border-slate-200 flex flex-col overflow-hidden">
+            <div className="p-6">
+              <Title className="mb-4">Genesi Operazione</Title>
+              {genesisLoading ? (
+                <Text>Estrazione memoria in corso...</Text>
+              ) : genesisData ? (
+                <div className="space-y-4">
+                  <div>
+                    <Text className="font-medium text-slate-500">Asset</Text>
+                    <Text className="font-bold text-xl text-slate-900">{genesisData.epic}</Text>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Text className="font-medium text-slate-500">Direzione</Text>
+                      <div className="mt-1">
+                        <Badge color={genesisData.direction === "BUY" ? "emerald" : "rose"}>
+                          {genesisData.direction}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <Text className="font-medium text-slate-500">Voto Medio (Consiglio)</Text>
+                      <Text className="font-bold text-lg text-slate-900">
+                        {genesisData.votes_mean !== undefined ? (genesisData.votes_mean * 100).toFixed(0) + '%' : 'N/A'}
+                      </Text>
+                    </div>
+                  </div>
+                  <div>
+                    <Text className="font-medium text-slate-500">Motivazione Originale</Text>
+                    <div className="mt-2 bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm leading-relaxed text-slate-700">
+                      Questa posizione è stata approvata dal Supervisor Engine grazie ai segnali combinati dai motori IA, con approvazione matematica assoluta da: <strong className="text-slate-900">{genesisData.source || 'Titano V8'}</strong>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <Text className="font-medium">Voto Medio (Consiglio)</Text>
-                  <Text className="font-bold">{(genesisData.votes_mean * 100).toFixed(0)}%</Text>
-                </div>
-              </div>
-              <div>
-                <Text className="font-medium">Motivazione Originale</Text>
-                <Text className="mt-1 bg-slate-50 p-3 rounded-lg border border-slate-200 text-sm">
-                  Questa posizione è stata approvata dal Supervisor Engine grazie ai segnali combinati dai motori IA, con approvazione matematica assoluta da: <strong className="text-slate-800">{genesisData.source || 'Titano V8'}</strong>
+              ) : (
+                <Text className="text-rose-500 font-medium p-4 bg-rose-50 rounded-lg border border-rose-100">
+                  Dati della Genesi non disponibili. Il trade potrebbe essere troppo vecchio o generato manualmente.
                 </Text>
-              </div>
+              )}
+            </div>
+            <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-end">
               <button 
-                className="w-full mt-4 bg-slate-900 text-white rounded-lg py-2 font-medium hover:bg-slate-800 transition-colors"
+                className="px-6 py-2 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800 transition-colors shadow-sm"
                 onClick={() => setIsGenesisModalOpen(false)}
               >
                 Chiudi
               </button>
             </div>
-          ) : (
-            <Text className="text-rose-500">Dati della Genesi non disponibili. Il trade potrebbe essere troppo vecchio o generato manualmente.</Text>
-          )}
-        </DialogPanel>
-      </Dialog>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
