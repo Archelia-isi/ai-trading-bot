@@ -132,6 +132,10 @@ async def redis_listener():
                         executed_size=size, 
                         leverage=1
                     )
+                    
+                    # Salva anche in Redis per la Dashboard (popup UI)
+                    await r.hset("trade_genesis", epic, json.dumps(data))
+                    
                     logger.info(f"🧬 Genesi Trade Registrata: {direction} su {epic} (Consiglio D'Amministrazione - Media: {votes_mean:.2f})")
                     
                 elif channel == 'portfolio_status':

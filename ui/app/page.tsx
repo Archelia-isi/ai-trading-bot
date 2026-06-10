@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Card, Title, Text, Grid, Metric, Table, TableHead, TableRow, TableHeaderCell, TableBody, TableCell, Badge, Switch } from "@tremor/react";
+import { Card, Title, Text, Grid, Metric, Table, TableHead, TableRow, TableHeaderCell, TableBody, TableCell, Badge, Switch, Dialog, DialogPanel } from "@tremor/react";
 import { createChart, IChartApi, CandlestickSeriesPartialOptions, ColorType } from "lightweight-charts";
 
 export default function Dashboard() {
@@ -11,6 +11,28 @@ export default function Dashboard() {
   const [portfolio, setPortfolio] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
+
+  // Modal Genesis
+  const [isGenesisModalOpen, setIsGenesisModalOpen] = useState(false);
+  const [genesisData, setGenesisData] = useState<any>(null);
+  const [genesisLoading, setGenesisLoading] = useState(false);
+
+  const handleRowClick = async (epic: string) => {
+    setGenesisData(null);
+    setGenesisLoading(true);
+    setIsGenesisModalOpen(true);
+    try {
+      const res = await fetch(`/api/genesis?epic=${epic}`);
+      const data = await res.json();
+      if (data.status === 'success') {
+        setGenesisData(data.genesis);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setGenesisLoading(false);
+    }
+  };
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -246,7 +268,11 @@ export default function Dashboard() {
                 </TableRow>
               )}
               {openPositions.map((ordine: any, idx: number) => (
-                <tr key={idx} className="hover:bg-slate-100 transition-colors border-b border-slate-200">
+                <TableRow 
+                  key={idx} 
+                  className="hover:bg-slate-100 transition-colors border-b border-slate-200 cursor-pointer"
+                  onClick={() => handleRowClick(ordine.epic)}
+                >
                   <TableCell className="font-bold text-slate-900">{ordine.epic}</TableCell>
                   <TableCell>
                     <Badge color={ordine.direction === "BUY" ? "emerald" : "rose"}>
@@ -263,7 +289,7 @@ export default function Dashboard() {
                   <TableCell className={ordine.pnl_pct >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
                     {formatPct(ordine.pnl_pct)}
                   </TableCell>
-                </tr>
+                </TableRow>
               ))}
             </TableBody>
           </Table>
@@ -274,6 +300,48 @@ export default function Dashboard() {
         <span className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isOffline ? 'bg-rose-500' : 'bg-emerald-500'}`}></div> Bridge API: {isOffline ? "Offline" : "Stabile"}</span>
         <span className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isLoading ? 'bg-amber-500' : isOffline ? 'bg-rose-500' : 'bg-emerald-500'}`}></div> Motore Python: {isLoading ? "Attesa..." : isOffline ? "Disconnesso" : "Online"}</span>
       </div>
+
+      <Dialog open={isGenesisModalOpen} onClose={() => setIsGenesisModalOpen(false)}>
+        <DialogPanel className="max-w-md">
+          <Title className="mb-4">Genesi Operazione</Title>
+          {genesisLoading ? (
+            <Text>Estrazione memoria in corso...</Text>
+          ) : genesisData ? (
+            <div className="space-y-4">
+              <div>
+                <Text className="font-medium">Asset</Text>
+                <Text className="font-bold text-lg">{genesisData.epic}</Text>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Text className="font-medium">Direzione</Text>
+                  <Badge color={genesisData.direction === "BUY" ? "emerald" : "rose"}>
+                    {genesisData.direction}
+                  </Badge>
+                </div>
+                <div>
+                  <Text className="font-medium">Voto Medio (Consiglio)</Text>
+                  <Text className="font-bold">{(genesisData.votes_mean * 100).toFixed(0)}%</Text>
+                </div>
+              </div>
+              <div>
+                <Text className="font-medium">Motivazione Originale</Text>
+                <Text className="mt-1 bg-slate-50 p-3 rounded-lg border border-slate-200 text-sm">
+                  Questa posizione è stata approvata dal Supervisor Engine grazie ai segnali combinati dai motori IA, con approvazione matematica assoluta da: <strong className="text-slate-800">{genesisData.source || 'Titano V8'}</strong>
+                </Text>
+              </div>
+              <button 
+                className="w-full mt-4 bg-slate-900 text-white rounded-lg py-2 font-medium hover:bg-slate-800 transition-colors"
+                onClick={() => setIsGenesisModalOpen(false)}
+              >
+                Chiudi
+              </button>
+            </div>
+          ) : (
+            <Text className="text-rose-500">Dati della Genesi non disponibili. Il trade potrebbe essere troppo vecchio o generato manualmente.</Text>
+          )}
+        </DialogPanel>
+      </Dialog>
     </main>
   );
 }
