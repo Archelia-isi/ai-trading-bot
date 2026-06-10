@@ -151,6 +151,8 @@ async def titano_loop():
     # HOT-RELOAD TRACKER
     last_model_mtime = os.path.getmtime(model_path) if os.path.exists(model_path) else 0
     
+    ALLOWED_CRYPTO = ["BTCUSD", "ETHUSD", "SOLUSD", "DOGEUSD", "XRPUSD"]
+    
     async for message in pubsub.listen():
         if message['type'] == 'message':
             # Controllo Hot-Reload del cervello
@@ -171,8 +173,12 @@ async def titano_loop():
                 
                 batch_obs = []
                 valid_assets = []
+                xgb_probs_map = {} # FIX BUG VISIVO DEL 47%
                 
                 for epic, candles in data.items():
+                    if epic not in ALLOWED_CRYPTO:
+                        continue
+                        
                     if len(candles) < 70: 
                         continue
                         
@@ -237,6 +243,7 @@ async def titano_loop():
                         xgb_prob = float(xgb_val) if xgb_val else 0.5
                     except: xgb_prob = 0.5
                     f4 = xgb_prob
+                    xgb_probs_map[epic] = xgb_prob # Salviamo il prob per questo epic specifico
                     
                     f5 = float(last_row.get('Regime_Market', 0.0))
                     f6 = float(last_row.get('Z_Score_ATR', 0.0))
@@ -304,6 +311,8 @@ async def titano_loop():
                         
                         is_owned = any(p.get("epic") == epic for p in portfolio_state_cache.get("open_positions", []))
                         
+                        correct_xgb_prob = xgb_probs_map.get(epic, 0.5)
+                        
                         if direction != "FLAT":
                             dynamic_size = round(confidence * 10.0, 2)
                             action_log = "ACCUMULO (Pyramiding)" if is_owned else "NUOVA POSIZIONE"
@@ -311,7 +320,7 @@ async def titano_loop():
                             
                             req = {
                                 "epic": epic, "direction": direction, "size_pct": dynamic_size, "leverage": 1, 
-                                "prob": confidence, "xgb_prob": float(xgb_prob), "news_sentiment": float(news_sentiment),
+                                "prob": confidence, "xgb_prob": float(correct_xgb_prob), "news_sentiment": float(news_sentiment),
                                 "source": f"TITANO_V8_{'ACCUMULO' if is_owned else 'NUOVO'}"
                             }
                             await r.publish("execution_requests", json.dumps(req))

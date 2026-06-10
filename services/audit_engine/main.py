@@ -150,6 +150,145 @@ async def portfolio_monitor_loop():
         await asyncio.sleep(5)
 
 
+processing_assets = {}
+
+async def process_order_message(data, r, api):
+    epic = data.get("epic")
+    direction = data.get("direction")
+    size_pct = data.get("size_pct", 5.0)
+    
+    if processing_assets.get(epic, False):
+        logger.warning(f"⏳ Asset {epic} è già in transazione. Segnale {direction} ignorato per prevenire spam (cooldown).")
+        return
+        
+    processing_assets[epic] = True
+    
+    try:
+        logger.info(f"Ricevuto ordine da Titano: {direction} su {epic} (Size: {size_pct}%)")
+        
+        open_positions = await asyncio.to_thread(api.get_all_positions)
+        existing_pos = None
+        for pos in open_positions:
+            if pos.get('market', {}).get('epic') == epic:
+                existing_pos = pos
+                break
+                
+        # Check Sistema Armato all'inizio!
+        is_armed_str = await r.get("system_armed")
+        is_armed = False
+        if is_armed_str is not None:
+            is_armed = (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
+
+        if direction == "FLAT":
+            if existing_pos:
+                if not is_armed:
+                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo Chiusura FLAT su {epic}")
+                else:
+                    logger.info(f"Titano ha azzerato l'esposizione. Chiusura posizione su {epic}.")
+                    await asyncio.to_thread(api.close_position_by_epic, epic)
+                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Totale", "status": "APPROVED"}))
+            
+        elif direction == "SELL":
+            existing_dir = existing_pos.get('position', {}).get('direction', 'BUY') if existing_pos else None
+            
+            if existing_dir == "BUY":
+                if not is_armed:
+                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo Chiusura Long aperta su {epic}")
+                else:
+                    logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione Long aperta.")
+                    await asyncio.to_thread(api.close_position_by_epic, epic)
+                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Long", "status": "APPROVED"}))
+            
+            action_str = "SELL (Accumulo)" if existing_dir == "SELL" else "SELL (Stop & Reverse)" if existing_dir == "BUY" else "SELL"
+            
+            balance = await asyncio.to_thread(api.get_account_balance)
+            cash_to_invest = balance * (size_pct / 100.0)
+            
+            price = await asyncio.to_thread(api.get_market_price, epic)
+            if price > 0:
+                qty = cash_to_invest / price
+                min_size = await asyncio.to_thread(api.get_min_deal_size, epic)
+                if qty < min_size:
+                    qty = min_size
+                
+                if not is_armed:
+                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo {action_str} su {epic} | Qty: {qty}")
+                    res = {"dealReference": f"dry_run_{epic}_{direction}"}
+                else:
+                    logger.info(f"Esecuzione {action_str} su {epic} | Qty: {qty} (Investimento stimato: ${cash_to_invest:.2f})")
+                    res = await asyncio.to_thread(api.place_order, epic=epic, direction="SELL", size=qty)
+                
+                if "dealReference" in res:
+                    logger.info(f"✅ Ordine {action_str} Eseguito con successo su {epic}!")
+                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "APPROVED"}))
+                    
+                    genesis_req = {
+                        "epic": epic,
+                        "direction": direction,
+                        "source": data.get("source", "TITANO_V6_SHORT"),
+                        "votes_mean": data.get("xgb_prob", data.get("prob", 0.5)),
+                        "size": size_pct,
+                        "price": price
+                    }
+                    await r.publish("supervisor_trade_genesis", json.dumps(genesis_req))
+                else:
+                    logger.error(f"❌ Ordine {action_str} Fallito su {epic}: {res}")
+                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "ERROR"}))
+        
+        elif direction == "BUY":
+            existing_dir = existing_pos.get('position', {}).get('direction', 'BUY') if existing_pos else None
+            
+            if existing_dir == "SELL":
+                if not is_armed:
+                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo Chiusura Short aperta su {epic}")
+                else:
+                    logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione Short aperta.")
+                    await asyncio.to_thread(api.close_position_by_epic, epic)
+                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Short", "status": "APPROVED"}))
+                
+            action_str = "BUY (Accumulo)" if existing_dir == "BUY" else "BUY (Stop & Reverse)" if existing_dir == "SELL" else "BUY"
+            
+            balance = await asyncio.to_thread(api.get_account_balance)
+            cash_to_invest = balance * (size_pct / 100.0)
+            
+            price = await asyncio.to_thread(api.get_market_price, epic)
+            if price > 0:
+                qty = cash_to_invest / price
+                min_size = await asyncio.to_thread(api.get_min_deal_size, epic)
+                if qty < min_size:
+                    qty = min_size
+                
+                if not is_armed:
+                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo {action_str} su {epic} | Qty: {qty}")
+                    res = {"dealReference": f"dry_run_{epic}_{direction}"}
+                else:
+                    logger.info(f"Esecuzione {action_str} su {epic} | Qty: {qty} (Investimento stimato: ${cash_to_invest:.2f})")
+                    res = await asyncio.to_thread(api.place_order, epic=epic, direction="BUY", size=qty)
+                
+                if "dealReference" in res:
+                    logger.info(f"✅ Ordine {action_str} Eseguito con successo su {epic}!")
+                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "APPROVED"}))
+                    
+                    genesis_req = {
+                        "epic": epic,
+                        "direction": direction,
+                        "source": data.get("source", "TITANO_V6"),
+                        "votes_mean": data.get("xgb_prob", data.get("prob", 0.5)),
+                        "size": size_pct,
+                        "price": price
+                    }
+                    await r.publish("supervisor_trade_genesis", json.dumps(genesis_req))
+                else:
+                    logger.error(f"❌ Ordine {action_str} Fallito su {epic}: {res}")
+                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "ERROR"}))
+                    
+        await asyncio.sleep(2)
+        
+    except Exception as e:
+        logger.error(f"Errore durante l'elaborazione dell'ordine su {epic}: {e}")
+    finally:
+        processing_assets[epic] = False
+
 async def execution_manager_loop():
     logger.info("Avviato Esecutore 'Carta Bianca' (Fase 3). In attesa di ordini da Titano V6...")
     r = await aioredis.from_url(REDIS_URL)
@@ -162,130 +301,9 @@ async def execution_manager_loop():
                 if message['type'] == 'message':
                     try:
                         data = json.loads(message['data'])
-                        epic = data.get("epic")
-                        direction = data.get("direction")
-                        size_pct = data.get("size_pct", 5.0)
-                        
-                        logger.info(f"Ricevuto ordine da Titano: {direction} su {epic} (Size: {size_pct}%)")
-                        
-                        open_positions = api.get_all_positions()
-                        existing_pos = None
-                        for pos in open_positions:
-                            if pos.get('market', {}).get('epic') == epic:
-                                existing_pos = pos
-                                break
-                                
-                        # Check Sistema Armato all'inizio!
-                        is_armed_str = await r.get("system_armed")
-                        is_armed = False
-                        if is_armed_str is not None:
-                            is_armed = (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
-
-                        if direction == "FLAT":
-                            if existing_pos:
-                                if not is_armed:
-                                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo Chiusura FLAT su {epic}")
-                                else:
-                                    logger.info(f"Titano ha azzerato l'esposizione. Chiusura posizione su {epic}.")
-                                    api.close_position_by_epic(epic)
-                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Totale", "status": "APPROVED"}))
-                            continue
-
-                        if direction == "SELL":
-                            existing_dir = existing_pos.get('position', {}).get('direction', 'BUY') if existing_pos else None
-                            
-                            if existing_dir == "BUY":
-                                if not is_armed:
-                                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo Chiusura Long aperta su {epic}")
-                                else:
-                                    logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione Long aperta.")
-                                    api.close_position_by_epic(epic)
-                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Long", "status": "APPROVED"}))
-                            
-                            action_str = "SELL (Accumulo)" if existing_dir == "SELL" else "SELL (Stop & Reverse)" if existing_dir == "BUY" else "SELL"
-                            
-                            balance = api.get_account_balance()
-                            cash_to_invest = balance * (size_pct / 100.0)
-                            
-                            price = api.get_market_price(epic)
-                            if price > 0:
-                                qty = cash_to_invest / price
-                                min_size = api.get_min_deal_size(epic)
-                                if qty < min_size:
-                                    qty = min_size
-                                
-                                if not is_armed:
-                                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo {action_str} su {epic} | Qty: {qty}")
-                                    res = {"dealReference": f"dry_run_{epic}_{direction}"}
-                                else:
-                                    logger.info(f"Esecuzione {action_str} su {epic} | Qty: {qty} (Investimento stimato: ${cash_to_invest:.2f})")
-                                    res = api.place_order(epic=epic, direction="SELL", size=qty)
-                                
-                                if "dealReference" in res:
-                                    logger.info(f"✅ Ordine {action_str} Eseguito con successo su {epic}!")
-                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "APPROVED"}))
-                                    
-                                    genesis_req = {
-                                        "epic": epic,
-                                        "direction": direction,
-                                        "source": data.get("source", "TITANO_V6_SHORT"),
-                                        "votes_mean": data.get("xgb_prob", data.get("prob", 0.5)),
-                                        "size": size_pct,
-                                        "price": price
-                                    }
-                                    await r.publish("supervisor_trade_genesis", json.dumps(genesis_req))
-                                else:
-                                    logger.error(f"❌ Ordine {action_str} Fallito su {epic}: {res}")
-                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "ERROR"}))
-                        
-                        elif direction == "BUY":
-                            existing_dir = existing_pos.get('position', {}).get('direction', 'BUY') if existing_pos else None
-                            
-                            if existing_dir == "SELL":
-                                if not is_armed:
-                                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo Chiusura Short aperta su {epic}")
-                                else:
-                                    logger.info(f"Titano ha invertito la view su {epic}. Chiusura posizione Short aperta.")
-                                    api.close_position_by_epic(epic)
-                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": "Chiusura Short", "status": "APPROVED"}))
-                                
-                            action_str = "BUY (Accumulo)" if existing_dir == "BUY" else "BUY (Stop & Reverse)" if existing_dir == "SELL" else "BUY"
-                            
-                            balance = api.get_account_balance()
-                            cash_to_invest = balance * (size_pct / 100.0)
-                            
-                            price = api.get_market_price(epic)
-                            if price > 0:
-                                qty = cash_to_invest / price
-                                min_size = api.get_min_deal_size(epic)
-                                if qty < min_size:
-                                    qty = min_size
-                                
-                                if not is_armed:
-                                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo {action_str} su {epic} | Qty: {qty}")
-                                    res = {"dealReference": f"dry_run_{epic}_{direction}"}
-                                else:
-                                    logger.info(f"Esecuzione {action_str} su {epic} | Qty: {qty} (Investimento stimato: ${cash_to_invest:.2f})")
-                                    res = api.place_order(epic=epic, direction="BUY", size=qty)
-                                
-                                if "dealReference" in res:
-                                    logger.info(f"✅ Ordine {action_str} Eseguito con successo su {epic}!")
-                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "APPROVED"}))
-                                    
-                                    genesis_req = {
-                                        "epic": epic,
-                                        "direction": direction,
-                                        "source": data.get("source", "TITANO_V6"),
-                                        "votes_mean": data.get("xgb_prob", data.get("prob", 0.5)),
-                                        "size": size_pct,
-                                        "price": price
-                                    }
-                                    await r.publish("supervisor_trade_genesis", json.dumps(genesis_req))
-                                else:
-                                    logger.error(f"❌ Ordine {action_str} Fallito su {epic}: {res}")
-                                    await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "ERROR"}))
+                        asyncio.create_task(process_order_message(data, r, api))
                     except Exception as e:
-                        logger.error(f"Errore durante l'elaborazione dell'ordine: {e}")
+                        logger.error(f"Errore parsing messaggio: {e}")
         except Exception as e:
             logger.error(f"Errore connessione Redis Execution: {e}")
             await asyncio.sleep(5)
