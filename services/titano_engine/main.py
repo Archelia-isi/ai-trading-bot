@@ -151,8 +151,6 @@ async def titano_loop():
     # HOT-RELOAD TRACKER
     last_model_mtime = os.path.getmtime(model_path) if os.path.exists(model_path) else 0
     
-    ALLOWED_CRYPTO = ["BTCUSD", "ETHUSD", "SOLUSD", "DOGEUSD", "XRPUSD"]
-    
     async for message in pubsub.listen():
         if message['type'] == 'message':
             # Controllo Hot-Reload del cervello
@@ -176,9 +174,6 @@ async def titano_loop():
                 xgb_probs_map = {} # FIX BUG VISIVO DEL 47%
                 
                 for epic, candles in data.items():
-                    if epic not in ALLOWED_CRYPTO:
-                        continue
-                        
                     if len(candles) < 70: 
                         continue
                         
