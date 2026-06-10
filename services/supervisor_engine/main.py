@@ -27,7 +27,7 @@ active_trades_pnl = {} # epic -> last known pnl
 api = CapitalComAPI()
 api.authenticate()
 
-async def generate_protocol(epic: str, direction: str, votes_mean: float, pnl: float):
+async def generate_protocol(epic: str, direction: str, votes_mean: float, pnl: float, *args, **kwargs):
     """(Disattivato) La generazione testuale di Gemini è stata sostituita dalla Cross-Pollination numerica."""
     pass
 
