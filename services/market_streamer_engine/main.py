@@ -49,7 +49,7 @@ async def prefill_historical_data(epic: str):
     """Precarica le ultime 30 candele a 1 minuto via REST per saltare il warm-up di 30 minuti."""
     try:
         # Chiamata REST manuale a MINUTO (Capital API base url)
-        url = f"{api.base_url}/prices/{epic}?resolution=MINUTE&max=30"
+        url = f"{api.base_url}/prices/{epic}?resolution=MINUTE&max=70"
         import requests
         response = requests.get(url, headers=api._get_headers(with_auth=True), timeout=10)
         
@@ -65,7 +65,7 @@ async def prefill_historical_data(epic: str):
                 candles.append({"open": o, "high": h, "low": l, "close": c})
                 
             historical_candles[epic] = candles
-            logger.info(f"📊 [Memoria] Buffer riempito ({len(candles)}/30 candele) per {epic}")
+            logger.info(f"📊 [Memoria] Buffer riempito ({len(candles)}/70 candele) per {epic}")
         else:
             historical_candles[epic] = []
             logger.warning(f"⚠️ [Memoria] Impossibile scaricare storico per {epic}, warm-up richiesto.")
@@ -106,8 +106,8 @@ def process_tick(epic: str, price: float):
             }
             db_queue.put_nowait((epic, [db_candle_format]))
             
-            # Manteniamo solo le ultime 30 candele per l'inferenza V6
-            if len(historical_candles[epic]) > 30:
+            # Manteniamo solo le ultime 70 candele per l'inferenza V8
+            if len(historical_candles[epic]) > 70:
                 historical_candles[epic].pop(0)
                 
             # Avviamo la nuova candela del nuovo minuto
@@ -266,10 +266,10 @@ async def publisher_loop(r: aioredis.Redis):
     while True:
         await asyncio.sleep(60)
         logger.info("📡 [Streamer Publisher] Invio matrici di osservazione a Titano...")
-        # Prepariamo un pacchetto con tutti gli asset che hanno almeno 30 candele
+        # Prepariamo un pacchetto con tutti gli asset che hanno almeno 70 candele
         ready_assets = {}
         for epic, candles in historical_candles.items():
-            if len(candles) == 30:
+            if len(candles) >= 70:
                 ready_assets[epic] = candles
         
         if ready_assets:

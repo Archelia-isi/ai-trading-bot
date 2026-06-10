@@ -8,6 +8,9 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+from collections import deque
+from datetime import datetime
+import ta
 
 import gymnasium as gym
 from stable_baselines3 import PPO
@@ -39,67 +42,75 @@ async def portfolio_sync_loop():
             except Exception as e:
                 logger.error(f"Errore lettura portfolio_status in Titano: {e}")
 
-# --- CLASSE CUSTOM NECESSARIA PER CARICARE IL MODELLO ---
-class MultiAssetFeatureExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 1024):
-        super().__init__(observation_space, features_dim)
-        n_input_channels = observation_space.shape[1]
+class LiveFeatureNormalizer:
+    """
+    Gestisce la normalizzazione Z-Score in tempo reale delle 12 features.
+    Mantiene in memoria gli ultimi 70 tick per calcolare statistiche rolling accurate,
+    e gestisce il FrameStack a 4 livelli per il modello PPO V8.3.
+    """
+    def __init__(self, window_size=70, frame_stack_size=4, num_features=12):
+        self.window_size = window_size
+        self.frame_stack_size = frame_stack_size
+        self.num_features = num_features
         
-        self.cnn = nn.Sequential(
-            nn.Conv1d(n_input_channels, 128, kernel_size=8, stride=2, padding=3),
-            nn.ReLU(),
-            nn.Conv1d(128, 256, kernel_size=8, stride=2, padding=3),
-            nn.ReLU(),
-            nn.Conv1d(256, 512, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv1d(512, 1024, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Flatten(),
-        )
+        # Buffer storico per calcolare Media e Dev_Std (ultimi 70 tick)
+        self.history_buffer = deque(maxlen=window_size)
         
-        with torch.no_grad():
-            dummy_input = torch.zeros(1, n_input_channels, observation_space.shape[0])
-            n_flatten = self.cnn(dummy_input).shape[1]
+        # FrameStack finale per il modello (ultimi 4 tick normalizzati)
+        # Inizializzato con zeri per i primi tick a mercato freddo
+        self.frame_stack = deque(
+            [np.zeros(num_features, dtype=np.float32) for _ in range(frame_stack_size)], 
+            maxlen=frame_stack_size
+        )
+
+    def _update_historical_buffer(self, raw_features: np.ndarray):
+        """Aggiunge l'ultimo tick grezzo al buffer storico."""
+        self.history_buffer.append(raw_features)
+
+    def _get_rolling_stats(self):
+        """Calcola media e deviazione standard sugli ultimi N tick in memoria."""
+        if len(self.history_buffer) == 0:
+            return np.zeros(self.num_features), np.ones(self.num_features)
             
-        self.linear = nn.Sequential(
-            nn.Linear(n_flatten, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, features_dim),
-            nn.ReLU()
-        )
+        history_array = np.array(self.history_buffer)
+        
+        rolling_mean = np.mean(history_array, axis=0)
+        rolling_std = np.std(history_array, axis=0)
+        
+        # Evitiamo la divisione per zero se una feature è costante (es: PnL a zero all'inizio)
+        rolling_std = np.where(rolling_std == 0, 1e-8, rolling_std) 
+        
+        return rolling_mean, rolling_std
 
-    def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        observations = observations.permute(0, 2, 1) 
-        x = self.cnn(observations)
-        return self.linear(x)
-
-# --- CLASSE CUSTOM V6 ---
-class EstrazioneCaratteristiche(BaseFeaturesExtractor):
-    def __init__(self, observation_space: gym.spaces.Box, dimensione_caratteristiche: int = 2048):
-        super().__init__(observation_space, dimensione_caratteristiche)
-        self.rete_visiva = nn.Sequential(
-            nn.Conv1d(4, 256, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool1d(2),
-            nn.Conv1d(256, 512, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool1d(2),
-            nn.Conv1d(512, 1024, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-        with torch.no_grad():
-            campione = torch.zeros(1, 4, observation_space.shape[0])
-            dim_appiattita = self.rete_visiva(campione).shape[1]
-            
-        self.cervello_logico = nn.Sequential(
-            nn.Linear(dim_appiattita, dimensione_caratteristiche),
-            nn.ReLU()
-        )
-
-    def forward(self, osservazioni: torch.Tensor) -> torch.Tensor:
-        x = osservazioni.permute(0, 2, 1)
-        return self.cervello_logico(self.rete_visiva(x))
+    def process_new_tick(self, current_raw_features: np.ndarray) -> np.ndarray:
+        """
+        Riceve l'array delle 12 features grezze, aggiorna le statistiche,
+        normalizza il dato, lo inserisce nel FrameStack e restituisce l'input da 48 elementi per PPO.
+        """
+        # 1. Assicuriamoci che l'input sia corretto
+        assert len(current_raw_features) == self.num_features, f"Errore: attese {self.num_features} features, ricevute {len(current_raw_features)}"
+        
+        # 2. Aggiorniamo il buffer storico con il dato grezzo
+        self._update_historical_buffer(current_raw_features)
+        
+        # 3. Calcoliamo la media e std dev attuali
+        rolling_mean, rolling_std = self._get_rolling_stats()
+        
+        # 4. Z-Score Normalization del tick attuale
+        normalized_tick = (current_raw_features - rolling_mean) / rolling_std
+        
+        # OPZIONALE MA CONSIGLIATO: Clipping dei valori estremi (come fa Stable Baselines di base)
+        # Tagliamo anomalie oltre +/- 10 per non far esplodere la rete
+        normalized_tick = np.clip(normalized_tick, -10.0, 10.0) 
+        
+        # 5. Inseriamo il tick normalizzato nel FrameStack (che butta fuori il più vecchio in automatico)
+        self.frame_stack.append(normalized_tick)
+        
+        # 6. Appiattiamo il FrameStack in un array 1D da 48 elementi (4x12)
+        # Questo è l'osservazione esatta che il modello PPO si aspetta in inferenza
+        ppo_observation = np.concatenate(self.frame_stack)
+        
+        return ppo_observation
 
 # --- CONFIGURAZIONE ASSET ---
 # Ordine rigorosamente alfabetico basato sul nome file (es. AAPL_1m.parquet -> AAPL)
@@ -115,27 +126,13 @@ def get_capital_epic(ticker: str) -> str:
     if ticker.startswith("C:"): return ticker.replace("C:", "")
     return ticker
 
-# --- TOGGLE DI TRANSIZIONE (V5 -> V6) ---
-# Imposta a True SOLO quando hai caricato il file Titano_V6_Universale.zip
-USIAMO_LA_V6 = True
-V6_DRIVE_FILE_ID = "1NCRjilt5hsysIU2rHd6RsOzjZY2KqvQh"
-
 async def titano_loop():
-    logger.info(f"Avviato Titano Engine (V6={USIAMO_LA_V6})...")
-    
-    import __main__
-    setattr(__main__, 'MultiAssetFeatureExtractor', MultiAssetFeatureExtractor)
-    setattr(__main__, 'EstrazioneCaratteristiche', EstrazioneCaratteristiche)
+    logger.info("Avviato Titano Engine (V8.3 Sniper)...")
     
     try:
-        if not USIAMO_LA_V6:
-            model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V5_OcchiAperti.zip")
-            model = PPO.load(model_path, custom_objects={'MultiAssetFeatureExtractor': MultiAssetFeatureExtractor})
-            logger.info("🧠 Modello Titano V5 caricato con successo!")
-        else:
-            model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V7_DayTrader.zip")
-            model = PPO.load(model_path)
-            logger.info("🧠 Modello Titano V7 (DayTrader) caricato!")
+        model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V83_Crypto.zip")
+        model = PPO.load(model_path)
+        logger.info("🧠 Modello Titano V8.3 (Sniper) caricato con successo!")
     except Exception as e:
         logger.error(f"Errore caricamento modello: {e}")
         return
@@ -146,7 +143,10 @@ async def titano_loop():
     pubsub = r.pubsub()
     await pubsub.subscribe("market_updates")
     
-    logger.info("📡 In attesa di dati in streaming da Market Streamer Engine (V6)...")
+    logger.info("📡 In attesa di dati in streaming da Market Streamer Engine (V8)...")
+    
+    # Inizializziamo i normalizzatori per ogni asset
+    normalizers = {}
     
     # HOT-RELOAD TRACKER
     last_model_mtime = os.path.getmtime(model_path) if os.path.exists(model_path) else 0
@@ -159,31 +159,40 @@ async def titano_loop():
                 if current_mtime > last_model_mtime:
                     logger.info("🔥 HOT RELOAD: Trovato un nuovo cervello aggiornato! Iniezione in corso...")
                     try:
-                        if not USIAMO_LA_V6:
-                            model = PPO.load(model_path, custom_objects={'MultiAssetFeatureExtractor': MultiAssetFeatureExtractor})
-                        else:
-                            model = PPO.load(model_path)
+                        model = PPO.load(model_path)
                         last_model_mtime = current_mtime
-                        logger.info("✅ HOT RELOAD COMPLETATO: Titano sta usando i nuovi pesi neurali V7!")
+                        logger.info("✅ HOT RELOAD COMPLETATO: Titano sta usando i nuovi pesi neurali V8.3!")
                     except Exception as e:
                         logger.error(f"❌ Errore durante l'Hot Reload, continuo con il vecchio cervello: {e}")
                         
             try:
                 data = json.loads(message['data'])
-                # data è un dizionario: { epic: [30 candele], epic2: [30 candele] }
+                # data è un dizionario: { epic: [70 candele], epic2: [70 candele] }
                 
                 batch_obs = []
                 valid_assets = []
                 
                 for epic, candles in data.items():
-                    if len(candles) < 30: 
+                    if len(candles) < 70: 
                         continue
                         
-                    closes = np.array([c.get('close', 0.0) for c in candles])
-                    df = pd.DataFrame({'close': closes})
-                    df['returns'] = df['close'].pct_change()
-                    df['volatility'] = df['returns'].rolling(window=20).std()
-                    df.fillna(0, inplace=True)
+                    if epic not in normalizers:
+                        normalizers[epic] = LiveFeatureNormalizer()
+                        
+                    # Calcoliamo ATR e Momentum sull'intero storico
+                    df = pd.DataFrame(candles) # 'open', 'high', 'low', 'close'
+                    df['Log_Return'] = np.log(df['close'] / df['close'].shift(1))
+                    df['Mom_50'] = df['close'] / df['close'].shift(50) - 1
+                    
+                    atr_ind = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
+                    df['ATR'] = atr_ind.average_true_range()
+                    df['ATR_Z_Score'] = (df['ATR'] - df['ATR'].rolling(50).mean()) / (df['ATR'].rolling(50).std() + 1e-8)
+                    
+                    # Prendiamo l'ultima riga calcolata
+                    last_row = df.iloc[-1]
+                    log_ret = float(last_row.get('Log_Return', 0.0))
+                    atr_z = float(last_row.get('ATR_Z_Score', 0.0))
+                    mom_50 = float(last_row.get('Mom_50', 0.0))
                     
                     try:
                         xgb_val = await r.get(f"xgboost_prob:{epic}")
@@ -193,16 +202,37 @@ async def titano_loop():
                     try:
                         is_crypto = any(c in epic for c in ["BTC", "ETH", "SOL", "DOGE", "XRP"])
                         news_val = await r.get(f"cryptobert_sentiment:{epic}" if is_crypto else f"finbert_sentiment:{epic}")
-                        news_sentiment = float(news_val) if news_val else 0.0
-                    except: news_sentiment = 0.0
+                        bert_ema = float(news_val) if news_val else 0.0
+                    except: bert_ema = 0.0
                     
-                    df['xgb_proxy'] = xgb_prob
-                    df['news_proxy'] = news_sentiment
+                    tsn_scaled = 0.0 # Time Since News (Fallback live)
                     
-                    df_last_30 = df.iloc[-30:]
-                    feat_matrix = df_last_30[['returns', 'volatility', 'xgb_proxy', 'news_proxy']].to_numpy(dtype=np.float32)
+                    pos = 0.0
+                    pnl_pct = 0.0
+                    for p in portfolio_state_cache.get("open_positions", []):
+                        if p.get("epic") == epic:
+                            pos = 1.0 if p.get("position", {}).get("direction") == "BUY" else -1.0
+                            entry = float(p.get("position", {}).get("level", 0.0))
+                            if entry > 0:
+                                pnl_pct = ((float(last_row['close']) - entry) / entry) * pos
+                                
+                    now = datetime.utcnow()
+                    curr_min = now.hour * 60 + now.minute
+                    t_sin = float(np.sin(curr_min * (2. * np.pi / 1440.)))
+                    t_cos = float(np.cos(curr_min * (2. * np.pi / 1440.)))
+                    d_sin = float(np.sin(now.weekday() * (2. * np.pi / 7.)))
+                    d_cos = float(np.cos(now.weekday() * (2. * np.pi / 7.)))
                     
-                    batch_obs.append(feat_matrix)
+                    # Costruzione del vettore grezzo esatto (12 features)
+                    raw_features = np.array([log_ret, atr_z, mom_50, bert_ema, tsn_scaled, xgb_prob, pos, pnl_pct, t_sin, t_cos, d_sin, d_cos], dtype=np.float32)
+                    
+                    # Evitiamo NaN spuri iniziali
+                    raw_features = np.nan_to_num(raw_features, nan=0.0)
+                    
+                    # La classe gestisce la memoria, la normalizzazione Z-Score rolling e il FrameStack (4 livelli -> 48 dims)
+                    ppo_obs = normalizers[epic].process_new_tick(raw_features)
+                    
+                    batch_obs.append(ppo_obs)
                     valid_assets.append(epic)
                 
                 if len(batch_obs) > 0:
@@ -276,26 +306,7 @@ def download_model_from_drive(model_path: str):
 
 @app.on_event("startup")
 async def startup_event():
-    model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V7_DayTrader.zip")
-    
-    # 0. Download del modello disabilitato (file caricato manualmente)
-    # if USIAMO_LA_V6:
-    #     id_path = model_path + ".id"
-    #     needs_download = True
-    #     
-    #     if os.path.exists(model_path) and os.path.exists(id_path):
-    #         with open(id_path, "r") as f:
-    #             if f.read().strip() == V6_DRIVE_FILE_ID:
-    #                 needs_download = False
-    #                 
-    #     if needs_download:
-    #         logger.info(f"Nuovo ID ({V6_DRIVE_FILE_ID}) o file mancante: scarico da Google Drive...")
-    #         os.makedirs(os.path.dirname(model_path), exist_ok=True)
-    #         if os.path.exists(model_path):
-    #             os.remove(model_path)
-    #         download_model_from_drive(model_path)
-    #         with open(id_path, "w") as f:
-    #             f.write(V6_DRIVE_FILE_ID)
+    logger.info("Inizializzazione Titano Engine V8.3...")
     
     # 1. Start-up: Online Learning dai trade passati
     # perform_online_learning()
