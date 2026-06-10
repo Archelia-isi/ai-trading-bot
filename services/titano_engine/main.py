@@ -176,6 +176,13 @@ async def titano_loop():
                     if len(candles) < 70: 
                         continue
                         
+                    # ====================================================
+                    # GUARDIA: QUESTO E' IL CERVELLO CRYPTO (V8.3)
+                    # ====================================================
+                    is_crypto = any(c in epic for c in ["BTC", "ETH", "SOL", "DOGE", "XRP", "crypto"])
+                    if not is_crypto:
+                        continue # Ignora categoricamente Azioni (AAPL, MSFT), Forex, ecc.
+                        
                     if epic not in normalizers:
                         normalizers[epic] = LiveFeatureNormalizer()
                         
