@@ -3,8 +3,18 @@ import asyncio
 import logging
 import os
 import json
+import math
 import redis.asyncio as aioredis
 from capital_api import CapitalComAPI
+
+def safe_float(v):
+    try:
+        val = float(v)
+        if math.isnan(val) or math.isinf(val):
+            return 0.0
+        return val
+    except:
+        return 0.0
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
 logger = logging.getLogger(__name__)
@@ -71,28 +81,28 @@ async def portfolio_monitor_loop():
                     open_positions.append({
                         "epic": epic,
                         "direction": direction,
-                        "size": size_pct,
+                        "size": safe_float(size_pct),
                         "leverage": leverage,
-                        "margin_usd": margin_usd,
-                        "notional_usd": notional_usd,
-                        "upl": upl,
-                        "pnl_pct": (upl / margin_usd * 100) if margin_usd > 0 else 0.0,
-                        "asset_move_pct": (upl / notional_usd * 100) if notional_usd > 0 else 0.0
+                        "margin_usd": safe_float(margin_usd),
+                        "notional_usd": safe_float(notional_usd),
+                        "upl": safe_float(upl),
+                        "pnl_pct": safe_float((upl / margin_usd * 100) if margin_usd > 0 else 0.0),
+                        "asset_move_pct": safe_float((upl / notional_usd * 100) if notional_usd > 0 else 0.0)
                     })
                     current_pnl_usd += upl
                     
                 invested_capital = margin_info.get("margin", 0.0)
                 available_capital = margin_info.get("available", portfolio_state["total_capital"])
                 
-                portfolio_state["invested_capital"] = invested_capital
-                portfolio_state["available_capital"] = available_capital
+                portfolio_state["invested_capital"] = safe_float(invested_capital)
+                portfolio_state["available_capital"] = safe_float(available_capital)
                 portfolio_state["open_positions"] = open_positions
-                portfolio_state["current_pnl_pct"] = (current_pnl_usd / portfolio_state["total_capital"] * 100) if portfolio_state["total_capital"] > 0 else 0.0
+                portfolio_state["current_pnl_pct"] = safe_float((current_pnl_usd / portfolio_state["total_capital"] * 100) if portfolio_state["total_capital"] > 0 else 0.0)
                 
                 # Calcolo PnL Storico (Dall'inizio del software)
                 total_historic_pnl_usd = portfolio_state["total_capital"] - INITIAL_CAPITAL
-                portfolio_state["historic_pnl_usd"] = total_historic_pnl_usd
-                portfolio_state["historic_pnl_pct"] = (total_historic_pnl_usd / INITIAL_CAPITAL) * 100
+                portfolio_state["historic_pnl_usd"] = safe_float(total_historic_pnl_usd)
+                portfolio_state["historic_pnl_pct"] = safe_float((total_historic_pnl_usd / INITIAL_CAPITAL) * 100)
                 
                 # Calcolo PnL Giornaliero Capitalizzato (Daily Compounding)
                 try:
@@ -107,13 +117,23 @@ async def portfolio_monitor_loop():
                     
                 if daily_base <= 0: daily_base = 1.0 # Prevenzione div/0
                 
-                portfolio_state["daily_starting_capital"] = daily_base
+                portfolio_state["daily_starting_capital"] = safe_float(daily_base)
                 daily_pnl_usd = portfolio_state["total_capital"] - daily_base
-                portfolio_state["daily_pnl_usd"] = daily_pnl_usd
-                portfolio_state["daily_pnl_pct"] = (daily_pnl_usd / daily_base) * 100
+                portfolio_state["daily_pnl_usd"] = safe_float(daily_pnl_usd)
+                portfolio_state["daily_pnl_pct"] = safe_float((daily_pnl_usd / daily_base) * 100)
             
-            # Pubblica su Redis per la Dashboard
-            await r.publish("portfolio_status", json.dumps(portfolio_state))
+            # Leggi stato armato per esporlo (se serve) alla UI o log
+            try:
+                is_armed_str = await r.get("system_armed")
+                if is_armed_str is not None:
+                    portfolio_state["is_trading_locked"] = not (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
+            except:
+                pass
+
+            # Pubblica su Redis per la Dashboard e salvalo in cache
+            json_dump = json.dumps(portfolio_state)
+            await r.publish("portfolio_status", json_dump)
+            await r.set("latest_portfolio_status", json_dump)
         except Exception as e:
             logger.error(f"Errore nel portfolio_monitor_loop: {e}")
         
@@ -165,8 +185,19 @@ async def execution_manager_loop():
                                 if qty < min_size:
                                     qty = min_size
                                 
-                                logger.info(f"Esecuzione {action_str} su {epic} | Qty: {qty} (Investimento stimato: ${cash_to_invest:.2f})")
-                                res = api.place_order(epic=epic, direction="SELL", size=qty)
+                                # Check Sistema Armato prima di lanciare su Capital.com
+                                is_armed_str = await r.get("system_armed")
+                                is_armed = False
+                                if is_armed_str is not None:
+                                    is_armed = (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
+
+                                if not is_armed:
+                                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo {action_str} su {epic} | Qty: {qty}")
+                                    res = {"dealReference": f"dry_run_{epic}_{direction}"}
+                                else:
+                                    logger.info(f"Esecuzione {action_str} su {epic} | Qty: {qty} (Investimento stimato: ${cash_to_invest:.2f})")
+                                    res = api.place_order(epic=epic, direction="SELL", size=qty)
+                                
                                 if "dealReference" in res:
                                     logger.info(f"✅ Ordine {action_str} Eseguito con successo su {epic}!")
                                     await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "APPROVED"}))
@@ -204,8 +235,19 @@ async def execution_manager_loop():
                                 if qty < min_size:
                                     qty = min_size
                                 
-                                logger.info(f"Esecuzione {action_str} su {epic} | Qty: {qty} (Investimento stimato: ${cash_to_invest:.2f})")
-                                res = api.place_order(epic=epic, direction="BUY", size=qty)
+                                # Check Sistema Armato prima di lanciare su Capital.com
+                                is_armed_str = await r.get("system_armed")
+                                is_armed = False
+                                if is_armed_str is not None:
+                                    is_armed = (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
+
+                                if not is_armed:
+                                    logger.info(f"🛡️ DRY RUN (Disarmato): Simulo {action_str} su {epic} | Qty: {qty}")
+                                    res = {"dealReference": f"dry_run_{epic}_{direction}"}
+                                else:
+                                    logger.info(f"Esecuzione {action_str} su {epic} | Qty: {qty} (Investimento stimato: ${cash_to_invest:.2f})")
+                                    res = api.place_order(epic=epic, direction="BUY", size=qty)
+                                
                                 if "dealReference" in res:
                                     logger.info(f"✅ Ordine {action_str} Eseguito con successo su {epic}!")
                                     await r.publish("audit_actions", json.dumps({"epic": epic, "action": action_str, "status": "APPROVED"}))

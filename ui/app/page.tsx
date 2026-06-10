@@ -4,19 +4,68 @@ import React, { useState, useEffect, useRef } from "react";
 import { Card, Title, Text, Grid, Metric, Table, TableHead, TableRow, TableHeaderCell, TableBody, TableCell, Badge, Switch } from "@tremor/react";
 import { createChart, IChartApi, CandlestickSeriesPartialOptions, ColorType } from "lightweight-charts";
 
-// Mock dati JSON
-const ordiniMock = [
-  { id: 1, asset: "US100", direzione: "Lungo", capitale: 1500, leva: 20, esposizione: 30000, prezzoIn: 18500.5, prezzoAtt: 18520.0, pnl: 295.5, roe: 19.7, prob: 0.85, sent: 0.65, lat: "12ms", news: "La Fed mantiene i tassi stabili per il trimestre corrente." },
-  { id: 2, asset: "BTC/USDT", direzione: "Corto", capitale: 500, leva: 10, esposizione: 5000, prezzoIn: 68000, prezzoAtt: 67500, pnl: 36.7, roe: 7.34, prob: 0.72, sent: -0.4, lat: "8ms", news: "Imminente stretta normativa asiatica sulle criptovalute." }
-];
-
 export default function Dashboard() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [ordineSelezionato, setOrdineSelezionato] = useState<any>(null);
   const [sistemaArmato, setSistemaArmato] = useState(false);
+  
+  // Stati live
+  const [portfolio, setPortfolio] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+
+  useEffect(() => {
+    const fetchPortfolio = async () => {
+      try {
+        const res = await fetch("/api/portfolio");
+        if (!res.ok) {
+          setIsOffline(true);
+          return;
+        }
+        const data = await res.json();
+        if (data.status === 'success' && data.data) {
+          setPortfolio(data.data);
+          setIsOffline(false);
+        } else if (data.status === 'waiting') {
+           // Continua a mostrare Loading
+        }
+      } catch (err) {
+        setIsOffline(true);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    const fetchSystemStatus = async () => {
+      try {
+        const res = await fetch("/api/system");
+        if (res.ok) {
+          const data = await res.json();
+          setSistemaArmato(data.system_armed);
+        }
+      } catch (e) { }
+    };
+
+    fetchPortfolio();
+    fetchSystemStatus();
+
+    const interval = setInterval(fetchPortfolio, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSistemaArmatoToggle = async (val: boolean) => {
+    setSistemaArmato(val);
+    try {
+      await fetch("/api/system", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ system_armed: val })
+      });
+    } catch (e) {
+      console.error("Failed to toggle system");
+    }
+  };
 
   useEffect(() => {
     if (chartContainerRef.current) {
@@ -41,17 +90,10 @@ export default function Dashboard() {
         wickDownColor: '#f43f5e',
       } as CandlestickSeriesPartialOptions);
 
-      // Dati mock per il grafico
       candleSeries.setData([
         { time: '2026-06-08', open: 18400, high: 18500, low: 18350, close: 18450 },
         { time: '2026-06-09', open: 18450, high: 18600, low: 18420, close: 18520 },
         { time: '2026-06-10', open: 18520, high: 18550, low: 18200, close: 18250 },
-      ]);
-
-      // Markers (Segnali Operativi)
-      candleSeries.setMarkers([
-        { time: '2026-06-09', position: 'belowBar', color: '#10b981', shape: 'arrowUp', text: 'Compra' },
-        { time: '2026-06-10', position: 'aboveBar', color: '#f43f5e', shape: 'arrowDown', text: 'Vendi' }
       ]);
 
       chartRef.current = chart;
@@ -67,168 +109,141 @@ export default function Dashboard() {
     }
   }, []);
 
-  const apriDettagli = (ordine: any) => {
-    setOrdineSelezionato(ordine);
-    setIsOpen(true);
+  const formatEuro = (val: number) => {
+    if (val === undefined || val === null) return "€ 0,00";
+    return "€ " + val.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  
+  const formatPct = (val: number) => {
+    if (val === undefined || val === null) return "0.00%";
+    const sign = val > 0 ? "+" : "";
+    return sign + val.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
+  };
+
+  const initialCap = 50000;
+  const totalCapital = portfolio?.total_capital ?? initialCap;
+  const historicPnlUsd = portfolio?.historic_pnl_usd ?? 0;
+  const historicPnlPct = portfolio?.historic_pnl_pct ?? 0;
+  
+  const dailyBase = portfolio?.daily_starting_capital ?? initialCap;
+  const dailyPnlUsd = portfolio?.daily_pnl_usd ?? 0;
+  const dailyPnlPct = portfolio?.daily_pnl_pct ?? 0;
+  
+  const investedCap = portfolio?.invested_capital ?? 0;
+  const openPositions = portfolio?.open_positions ?? [];
+  const notionalTotal = openPositions.reduce((sum: number, p: any) => sum + (p.notional_usd || 0), 0);
+
+  const renderMetric = (value: string) => {
+    if (isLoading) return <Metric className="text-slate-400">Caricamento...</Metric>;
+    if (isOffline) return <Metric className="text-rose-500">Offline</Metric>;
+    return <Metric className="text-slate-900">{value}</Metric>;
   };
 
   return (
     <main className="p-8 bg-slate-50 min-h-screen text-slate-900 font-sans flex flex-col">
       <div className="flex-grow">
-        {/* Top Bar - Titolo e Interruttore */}
         <div className="flex justify-between items-center mb-8">
           <Title className="text-3xl font-bold text-slate-900">Alfacore V8 - Terminale Istituzionale</Title>
           <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
             <Text className="font-medium text-slate-600">Interruttore Generale</Text>
-            <Switch checked={sistemaArmato} onChange={setSistemaArmato} color="emerald" />
+            <Switch checked={sistemaArmato} onChange={handleSistemaArmatoToggle} color="emerald" />
             <Badge color={sistemaArmato ? "emerald" : "rose"} className="text-sm font-bold">
-              {sistemaArmato ? "SISTEMA ARMATO" : "SISTEMA DISARMATO"}
+              {sistemaArmato ? "SISTEMA ARMATO" : "SISTEMA DISARMATO (DRY RUN)"}
             </Badge>
           </div>
         </div>
 
-        {/* Metriche Contabili */}
         <Grid numItemsSm={1} numItemsLg={3} className="gap-6 mb-8">
           <Card decoration="top" decorationColor="blue" className="bg-white border border-slate-200 shadow-sm">
             <Text className="text-slate-500 font-medium">Capitale Iniziale Globale</Text>
-            <Metric className="text-slate-900">€ 50.000,00</Metric>
+            {renderMetric(formatEuro(initialCap))}
             <div className="mt-4">
-              <Text className="text-slate-500">Profitti/Perdite Latenti (Totale)</Text>
-              <Text className="text-emerald-600 font-bold text-lg">+ € 4.250,00 (+8.5%)</Text>
+              <Text className="text-slate-500">Profitti/Perdite Storiche</Text>
+              <Text className={historicPnlUsd >= 0 ? "text-emerald-600 font-bold text-lg" : "text-rose-600 font-bold text-lg"}>
+                {isLoading ? "..." : isOffline ? "N/A" : `${formatEuro(historicPnlUsd)} (${formatPct(historicPnlPct)})`}
+              </Text>
             </div>
           </Card>
 
           <Card decoration="top" decorationColor="emerald" className="bg-white border border-slate-200 shadow-sm">
-            <Text className="text-slate-500 font-medium">Capitale Capitalizzato Odierno</Text>
-            <Metric className="text-slate-900">€ 53.800,00</Metric>
+            <Text className="text-slate-500 font-medium">Capitale Attuale Capitalizzato</Text>
+            {renderMetric(formatEuro(totalCapital))}
             <div className="mt-4">
-              <Text className="text-slate-500">Profitti/Perdite Latenti (Oggi)</Text>
-              <Text className="text-emerald-600 font-bold text-lg">+ € 450,00 (+0.83%)</Text>
+              <Text className="text-slate-500">Profitti/Perdite Odierne</Text>
+              <Text className={dailyPnlUsd >= 0 ? "text-emerald-600 font-bold text-lg" : "text-rose-600 font-bold text-lg"}>
+                {isLoading ? "..." : isOffline ? "N/A" : `${formatEuro(dailyPnlUsd)} (${formatPct(dailyPnlPct)})`}
+              </Text>
             </div>
           </Card>
 
           <Card decoration="top" decorationColor="amber" className="bg-white border border-slate-200 shadow-sm">
-            <Text className="text-slate-500 font-medium">Capitale Esposto (Margine)</Text>
-            <Metric className="text-slate-900">€ 2.000,00</Metric>
+            <Text className="text-slate-500 font-medium">Margine Impegnato (Investito)</Text>
+            {renderMetric(formatEuro(investedCap))}
             <div className="mt-4">
-              <Text className="text-slate-500">Esposizione Nominale Totale</Text>
-              <Text className="text-slate-700 font-bold text-lg">€ 35.000,00</Text>
+              <Text className="text-slate-500">Esposizione Nominale Complessiva</Text>
+              <Text className="text-slate-700 font-bold text-lg">
+                {isLoading ? "..." : isOffline ? "N/A" : formatEuro(notionalTotal)}
+              </Text>
             </div>
           </Card>
         </Grid>
 
-        {/* Grafico Principale (Main Arena) */}
         <Card className="bg-white border border-slate-200 shadow-sm mb-8">
-          <Title className="text-slate-900 mb-4">Main Arena (US100 - Segnali Operativi)</Title>
+          <Title className="text-slate-900 mb-4">Main Arena (Grafico Operativo)</Title>
           <div ref={chartContainerRef} className="w-full h-[400px] border border-slate-100 rounded" />
         </Card>
 
-        {/* Registro Operazioni (Ledger) */}
         <Card className="bg-white border border-slate-200 shadow-sm mb-8">
-          <Title className="text-slate-900">Registro Operazioni (Ledger)</Title>
+          <Title className="text-slate-900">Posizioni Aperte in Tempo Reale</Title>
           <Table className="mt-5">
             <TableHead>
               <TableRow className="border-b border-slate-200">
                 <TableHeaderCell className="text-slate-500 font-medium">Asset</TableHeaderCell>
                 <TableHeaderCell className="text-slate-500 font-medium">Direzione</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">Capitale Investito</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">Leva Finanziaria</TableHeaderCell>
+                <TableHeaderCell className="text-slate-500 font-medium">Margine Investito</TableHeaderCell>
+                <TableHeaderCell className="text-slate-500 font-medium">Leva</TableHeaderCell>
                 <TableHeaderCell className="text-slate-500 font-medium">Esposizione Nominale</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">Prezzo Ingresso</TableHeaderCell>
-                <TableHeaderCell className="text-slate-500 font-medium">Prezzo Attuale</TableHeaderCell>
+                <TableHeaderCell className="text-slate-500 font-medium">Size %</TableHeaderCell>
                 <TableHeaderCell className="text-slate-500 font-medium">Profitti/Perdite (€)</TableHeaderCell>
                 <TableHeaderCell className="text-slate-500 font-medium">ROE (%)</TableHeaderCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {ordiniMock.map((ordine) => (
-                <tr 
-                  key={ordine.id} 
-                  className="hover:bg-slate-100 cursor-pointer transition-colors border-b border-slate-200"
-                  onClick={() => apriDettagli(ordine)}
-                >
-                  <TableCell className="font-bold text-slate-900">{ordine.asset}</TableCell>
+              {openPositions.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-slate-500 py-6">
+                    {isLoading ? "Caricamento in corso..." : isOffline ? "Motore Python Disconnesso" : "Nessuna posizione aperta attualmente."}
+                  </TableCell>
+                </TableRow>
+              )}
+              {openPositions.map((ordine: any, idx: number) => (
+                <tr key={idx} className="hover:bg-slate-100 transition-colors border-b border-slate-200">
+                  <TableCell className="font-bold text-slate-900">{ordine.epic}</TableCell>
                   <TableCell>
-                    <Badge color={ordine.direzione === "Lungo" ? "emerald" : "rose"}>
-                      {ordine.direzione}
+                    <Badge color={ordine.direction === "BUY" ? "emerald" : "rose"}>
+                      {ordine.direction}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-slate-700">€ {ordine.capitale}</TableCell>
-                  <TableCell className="text-slate-700">{ordine.leva}x</TableCell>
-                  <TableCell className="text-slate-700">€ {ordine.esposizione}</TableCell>
-                  <TableCell className="text-slate-700">{ordine.prezzoIn}</TableCell>
-                  <TableCell className="text-slate-700">{ordine.prezzoAtt}</TableCell>
-                  <TableCell className={ordine.pnl >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
-                    {ordine.pnl >= 0 ? "+" : ""}€ {ordine.pnl}
+                  <TableCell className="text-slate-700">{formatEuro(ordine.margin_usd)}</TableCell>
+                  <TableCell className="text-slate-700">{ordine.leverage}x</TableCell>
+                  <TableCell className="text-slate-700">{formatEuro(ordine.notional_usd)}</TableCell>
+                  <TableCell className="text-slate-700">{formatPct(ordine.size)}</TableCell>
+                  <TableCell className={ordine.upl >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
+                    {formatEuro(ordine.upl)}
                   </TableCell>
-                  <TableCell className={ordine.roe >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
-                    {ordine.roe >= 0 ? "+" : ""}{ordine.roe}%
+                  <TableCell className={ordine.pnl_pct >= 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
+                    {formatPct(ordine.pnl_pct)}
                   </TableCell>
                 </tr>
               ))}
             </TableBody>
           </Table>
         </Card>
-
-        {/* Scatola Nera (Pop-up) */}
-        {isOpen && ordineSelezionato && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-            <div className="bg-white p-6 rounded-lg shadow-2xl border border-slate-200 max-w-2xl w-full mx-4 relative">
-              <Title className="text-xl font-bold text-slate-900 mb-6 border-b border-slate-200 pb-3">
-                Report Operativo: {ordineSelezionato.asset} - {ordineSelezionato.direzione}
-              </Title>
-
-              <div className="space-y-6">
-                <div>
-                  <Text className="text-slate-700 font-semibold mb-3">Sezione 1 - Analisi Quantitativa</Text>
-                  <Grid numItems={3} className="gap-4">
-                    <div className="bg-slate-50 p-4 rounded-md border border-slate-100">
-                      <Text className="text-slate-500 text-sm">Probabilità XGBoost</Text>
-                      <Text className="text-slate-900 font-bold text-lg">
-                        {(ordineSelezionato.prob * 100).toFixed(0)}% {ordineSelezionato.prob >= 0.5 ? "Bullish" : "Bearish"}
-                      </Text>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-md border border-slate-100">
-                      <Text className="text-slate-500 text-sm">Sentiment NLP</Text>
-                      <Text className="text-slate-900 font-bold text-lg">
-                        {ordineSelezionato.sent > 0 ? "+" : ""}{ordineSelezionato.sent.toFixed(2)} {ordineSelezionato.sent > 0 ? "Euforia" : "Panico"}
-                      </Text>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-md border border-slate-100">
-                      <Text className="text-slate-500 text-sm">Latenza di Esecuzione</Text>
-                      <Text className="text-slate-900 font-bold text-lg">{ordineSelezionato.lat}</Text>
-                    </div>
-                  </Grid>
-                </div>
-
-                <div>
-                  <Text className="text-slate-700 font-semibold mb-3">Sezione 2 - Catalizzatore News</Text>
-                  <div className="bg-blue-50 p-4 rounded-md border border-blue-100">
-                    <Text className="text-blue-800 text-sm font-semibold mb-1">Notizia Rilevata (Traduzione IT):</Text>
-                    <Text className="text-slate-800 italic text-sm">"{ordineSelezionato.news}"</Text>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-8 flex justify-end">
-                <button 
-                  className="bg-slate-900 text-white px-6 py-2 rounded-md font-medium hover:bg-slate-800 transition shadow-sm"
-                  onClick={() => setIsOpen(false)}
-                >
-                  Chiudi
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Telemetria di Sistema (Footer) */}
       <div className="border-t border-slate-200 mt-8 pt-4 pb-2 flex flex-wrap gap-8 text-sm font-medium text-slate-600 items-center justify-center bg-white rounded-lg shadow-sm">
-        <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Latenza Database Redis: 0.8ms</span>
-        <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Stato Motore NLP: Online</span>
-        <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Stato Motore XGBoost: Sincronizzato al mercato</span>
-        <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-blue-500"></div> Tempo Esecuzione Algoritmo: 12ms</span>
+        <span className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isOffline ? 'bg-rose-500' : 'bg-emerald-500'}`}></div> Bridge API: {isOffline ? "Offline" : "Stabile"}</span>
+        <span className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isLoading ? 'bg-amber-500' : isOffline ? 'bg-rose-500' : 'bg-emerald-500'}`}></div> Motore Python: {isLoading ? "Attesa..." : isOffline ? "Disconnesso" : "Online"}</span>
       </div>
     </main>
   );
