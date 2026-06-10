@@ -120,7 +120,7 @@ export default function Dashboard() {
     return sign + val.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
   };
 
-  const initialCap = 50000;
+  const initialCap = portfolio?.initial_capital ?? portfolio?.total_capital ?? 0;
   const totalCapital = portfolio?.total_capital ?? initialCap;
   const historicPnlUsd = portfolio?.historic_pnl_usd ?? 0;
   const historicPnlPct = portfolio?.historic_pnl_pct ?? 0;

@@ -32,11 +32,12 @@ portfolio_state = {
     "is_trading_locked": False
 }
 
-INITIAL_CAPITAL = 89500.0 # Capitale Iniziale al lancio del software
+INITIAL_CAPITAL = None # Capitale Iniziale dinamico dal broker
 
 async def portfolio_monitor_loop():
     logger.info("Avviato Monitor Portfolio dell'Esecutore (per la Dashboard)...")
     r = await aioredis.from_url(REDIS_URL)
+    global INITIAL_CAPITAL
     while True:
         try:
             if api.is_authenticated:
@@ -44,6 +45,16 @@ async def portfolio_monitor_loop():
                 new_equity = margin_info.get("equity", 0.0)
                 if new_equity > 0:
                     portfolio_state["total_capital"] = new_equity
+                    
+                    if INITIAL_CAPITAL is None:
+                        stored_ic = await r.get("bot_initial_capital")
+                        if stored_ic:
+                            INITIAL_CAPITAL = float(stored_ic)
+                        else:
+                            INITIAL_CAPITAL = new_equity
+                            await r.set("bot_initial_capital", str(INITIAL_CAPITAL))
+                    
+                    portfolio_state["initial_capital"] = safe_float(INITIAL_CAPITAL)
                 
                 raw_positions = api.get_all_positions()
                 
