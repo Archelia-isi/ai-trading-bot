@@ -273,8 +273,8 @@ async def publisher_loop(r: aioredis.Redis):
                 ready_assets[epic] = candles
         
         if ready_assets:
-            await r.publish("market_updates", json.dumps(ready_assets))
-            logger.info(f"✅ Inviato pacchetto di inferenza per {len(ready_assets)} asset.")
+            await r.publish("market_updates_trade", json.dumps(ready_assets))
+            logger.info(f"✅ [TRADE] Inviato pacchetto di inferenza per {len(ready_assets)} asset a Trade Engine.")
 
 # Task in background per salvare nel DB senza bloccare il WebSocket
 async def db_writer_loop():
@@ -294,16 +294,12 @@ async def main():
         return
         
     tasks = []
-    tasks.append(asyncio.create_task(ws_handler_portfolio(1, r)))
-    tasks.append(asyncio.create_task(ws_handler_fixed(2, "Crypto Maggiori 1", CRYPTO_MAJORS_1, r)))
-    tasks.append(asyncio.create_task(ws_handler_fixed(3, "Crypto Maggiori 2", CRYPTO_MAJORS_2, r)))
-    tasks.append(asyncio.create_task(ws_handler_rotational(4, "Crypto Altcoin 1", GLOBAL_CRYPTO, r, chunk_size=5, rotation_minutes=10)))
-    tasks.append(asyncio.create_task(ws_handler_rotational(5, "Crypto Altcoin 2", GLOBAL_CRYPTO, r, chunk_size=5, rotation_minutes=10)))
+    # ws_handler_portfolio è già gestito da main_crypto
     
-    tasks.append(asyncio.create_task(ws_handler_fixed(6, "Stock Maggiori 1", STOCK_MAJORS_1, r)))
-    tasks.append(asyncio.create_task(ws_handler_fixed(7, "Stock Maggiori 2", STOCK_MAJORS_2, r)))
-    tasks.append(asyncio.create_task(ws_handler_rotational(8, "Global Radar 1", GLOBAL_MARKETS, r, chunk_size=6, rotation_minutes=10)))
-    tasks.append(asyncio.create_task(ws_handler_rotational(9, "Global Radar 2", GLOBAL_MARKETS, r, chunk_size=6, rotation_minutes=10)))
+    tasks.append(asyncio.create_task(ws_handler_fixed(2, "Stock Maggiori 1", STOCK_MAJORS_1, r)))
+    tasks.append(asyncio.create_task(ws_handler_fixed(3, "Stock Maggiori 2", STOCK_MAJORS_2, r)))
+    tasks.append(asyncio.create_task(ws_handler_rotational(4, "Global Radar 1", GLOBAL_MARKETS, r, chunk_size=6, rotation_minutes=10)))
+    tasks.append(asyncio.create_task(ws_handler_rotational(5, "Global Radar 2", GLOBAL_MARKETS, r, chunk_size=6, rotation_minutes=10)))
     
     # Task Publisher per Titano
     tasks.append(asyncio.create_task(publisher_loop(r)))

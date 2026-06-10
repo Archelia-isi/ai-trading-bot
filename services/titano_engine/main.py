@@ -141,7 +141,7 @@ async def titano_loop():
     api.authenticate()
 
     pubsub = r.pubsub()
-    await pubsub.subscribe("market_updates")
+    await pubsub.subscribe("market_updates_crypto")
     
     logger.info("📡 In attesa di dati in streaming da Market Streamer Engine (V8)...")
     
@@ -177,11 +177,9 @@ async def titano_loop():
                         continue
                         
                     # ====================================================
-                    # GUARDIA: QUESTO E' IL CERVELLO CRYPTO (V8.3)
+                    # ALFACORE CRYPTO (Titano V8.3)
+                    # Elabora tutti gli asset ricevuti dal canale
                     # ====================================================
-                    is_crypto = any(c in epic for c in ["BTC", "ETH", "SOL", "DOGE", "XRP", "crypto"])
-                    if not is_crypto:
-                        continue # Ignora categoricamente Azioni (AAPL, MSFT), Forex, ecc.
                         
                     if epic not in normalizers:
                         normalizers[epic] = LiveFeatureNormalizer()
