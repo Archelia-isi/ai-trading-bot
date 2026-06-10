@@ -46,13 +46,12 @@ async def portfolio_monitor_loop():
                 if new_equity > 0:
                     portfolio_state["total_capital"] = new_equity
                     
-                    if INITIAL_CAPITAL is None:
-                        stored_ic = await r.get("bot_initial_capital")
-                        if stored_ic:
-                            INITIAL_CAPITAL = float(stored_ic)
-                        else:
-                            INITIAL_CAPITAL = new_equity
-                            await r.set("bot_initial_capital", str(INITIAL_CAPITAL))
+                    stored_ic = await r.get("bot_initial_capital")
+                    if stored_ic:
+                        INITIAL_CAPITAL = float(stored_ic)
+                    else:
+                        INITIAL_CAPITAL = new_equity
+                        await r.set("bot_initial_capital", str(INITIAL_CAPITAL))
                     
                     portfolio_state["initial_capital"] = safe_float(INITIAL_CAPITAL)
                 
