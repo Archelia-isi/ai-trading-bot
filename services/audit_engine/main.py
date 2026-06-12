@@ -182,11 +182,22 @@ async def process_order_message(data, r, api):
                     existing_pos = {'position': {'direction': pos.get('direction', 'BUY')}}
                     break
                 
-            # Check Sistema Armato all'inizio!
-            is_armed_str = await r.get("system_armed")
-            is_armed = False
-            if is_armed_str is not None:
-                is_armed = (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
+            # Se è FLAT ma non abbiamo posizioni, possiamo ignorare in sicurezza senza chiamare API
+            if direction == "FLAT" and not existing_pos:
+                pass # Ignorato a costo zero
+            else:
+                # --- GESTIONE SINCRONA ORARI DI MERCATO (FROZEN STATE) ---
+                # Evitiamo chiamate POST a vuoto e crash da timeout se il mercato è chiuso o sta chiudendo
+                is_closing = await asyncio.to_thread(api.is_market_closing_soon, epic, 15)
+                if is_closing:
+                    logger.warning(f"🧊 Mercato Frozen per {epic} (Chiuso/Pausa). Segnale {direction} scartato per prevenire REJECTED.")
+                    return
+                    
+                # Check Sistema Armato all'inizio!
+                is_armed_str = await r.get("system_armed")
+                is_armed = False
+                if is_armed_str is not None:
+                    is_armed = (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
 
             if direction == "FLAT":
                 if existing_pos:
