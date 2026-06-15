@@ -30,12 +30,23 @@ GLOBAL_CRYPTO = [
     "ATOMUSD", "FILUSD", "AAVEUSD", "MKRUSD", "SNXUSD", "COMPUSD", "EOSUSD"
 ]
 
+ASIAN_STOCKS = [
+    "TM", "SONY", "HMC", "TSM", "BABA", "JD", "PDD", "BIDU", 
+    "INFY", "HDB", "TTM", "0700.HK", "9988.HK", "7203.T", "6758.T", "9984.T"
+]
+
+EUROPEAN_STOCKS = [
+    "MC.PA", "OR.PA", "TTE.PA", "SU.PA", "ASML.AS", "SAP.DE", "SIE.DE", 
+    "VOW3.DE", "ALV.DE", "ENEL.MI", "RACE.MI", "UCG.MI", "ISP.MI", "ENI.MI",
+    "IBE.MC", "SAN.MC", "ITX.MC", "HSBA.L", "SHEL.L", "AZN.L", "NVO", "NVS"
+]
+
 GLOBAL_MARKETS = [
     "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "GOLD", "USOIL", "NATURALGAS",
     "NFLX", "GOOGL", "BABA", "DIS", "BA", "IBM", "INTC", "CSCO", "PEP", "KO", "WMT", "JPM", "V", "MA",
     "EURGBP", "EURJPY", "GBPJPY", "SILVER", "COPPER", "PALLADIUM",
     "JP225", "HK50", "IN50", "AU200", "CN50", "IT40", "DE40", "FR40", "UK100", "ES35", "EU50", "US500", "US100"
-]
+] + ASIAN_STOCKS + EUROPEAN_STOCKS
 
 api = CapitalComAPI()
 
