@@ -141,7 +141,7 @@ async def ws_handler_fixed(socket_id: int, role: str, epics_list: list, r: aiore
     
     while True:
         try:
-            async with websockets.connect(uri, extra_headers=headers, ping_interval=30, ping_timeout=10) as ws:
+            async with websockets.connect(uri, additional_headers=headers, ping_interval=30, ping_timeout=10) as ws:
                 logger.info(f"✅ [Socket {socket_id} - {role}] Connesso con successo!")
                 
                 subscribe_msg = {
@@ -183,7 +183,7 @@ async def ws_handler_rotational(socket_id: int, role: str, pool: list, r: aiored
             await prefill_historical_data(epic)
             
         try:
-            async with websockets.connect(uri, extra_headers=headers, ping_interval=30, ping_timeout=10) as ws:
+            async with websockets.connect(uri, additional_headers=headers, ping_interval=30, ping_timeout=10) as ws:
                 subscribe_msg = {"destination": "marketdata.subscribe", "payload": {"epics": chunk}}
                 await ws.send(json.dumps(subscribe_msg))
                 
@@ -220,7 +220,7 @@ async def ws_handler_portfolio(socket_id: int, r: aioredis.Redis):
     
     while True:
         try:
-            async with websockets.connect(uri, extra_headers=headers, ping_interval=30, ping_timeout=10) as ws:
+            async with websockets.connect(uri, additional_headers=headers, ping_interval=30, ping_timeout=10) as ws:
                 logger.info(f"🟢 [Socket {socket_id} - Custode] Connesso in ascolto sul portafoglio.")
                 
                 async def listen_ws():
