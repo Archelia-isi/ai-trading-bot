@@ -346,8 +346,8 @@ async def main():
     
     tasks.append(asyncio.create_task(ws_handler_fixed(2, "Stock Maggiori 1", STOCK_MAJORS_1, r)))
     tasks.append(asyncio.create_task(ws_handler_fixed(3, "Stock Maggiori 2", STOCK_MAJORS_2, r)))
-    tasks.append(asyncio.create_task(ws_handler_rotational(4, "Global Radar 1", GLOBAL_MARKETS, r, chunk_size=100, rotation_minutes=2)))
-    tasks.append(asyncio.create_task(ws_handler_rotational(5, "Global Radar 2", GLOBAL_MARKETS, r, chunk_size=100, rotation_minutes=2)))
+    tasks.append(asyncio.create_task(ws_handler_rotational(4, "Global Radar 1", GLOBAL_MARKETS, r, chunk_size=40, rotation_minutes=2)))
+    tasks.append(asyncio.create_task(ws_handler_rotational(5, "Global Radar 2", GLOBAL_MARKETS, r, chunk_size=40, rotation_minutes=2)))
     
     # Task Publisher per Titano
     tasks.append(asyncio.create_task(publisher_loop(r)))
