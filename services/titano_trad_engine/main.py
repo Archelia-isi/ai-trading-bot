@@ -317,6 +317,11 @@ async def titano_loop():
                         correct_xgb_prob = xgb_probs_map.get(epic, 0.5)
                         
                         if direction != "FLAT":
+                            if confidence < 0.70:
+                                logger.info(f"🛑 [TITANO V8] {epic} -> {direction} SCARTATO (Confidence {confidence*100:.1f}% < 70.0%). Forzato a FLAT.")
+                                direction = "FLAT"
+                        
+                        if direction != "FLAT":
                             dynamic_size = round(confidence * 10.0, 2)
                             action_log = "ACCUMULO (Pyramiding)" if is_owned else "NUOVA POSIZIONE"
                             logger.info(f"🧠 [TITANO V8] {epic} -> {direction} ({action_log}) (Confidence: {confidence*100:.1f}%)")
