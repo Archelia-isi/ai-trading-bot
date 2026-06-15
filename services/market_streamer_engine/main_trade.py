@@ -31,14 +31,14 @@ GLOBAL_CRYPTO = [
 ]
 
 ASIAN_STOCKS = [
-    "TM", "SONY", "HMC", "TSM", "BABA", "JD", "PDD", "BIDU", 
-    "INFY", "HDB", "TTM", "0700.HK", "9988.HK", "7203.T", "6758.T", "9984.T"
+    "7203", "SNE", "7267", "TSM", "BABA", "JD", "BIDU", 
+    "INFY", "HDB", "7269", "0700"
 ]
 
 EUROPEAN_STOCKS = [
-    "MC.PA", "OR.PA", "TTE.PA", "SU.PA", "ASML.AS", "SAP.DE", "SIE.DE", 
-    "VOW3.DE", "ALV.DE", "ENEL.MI", "RACE.MI", "UCG.MI", "ISP.MI", "ENI.MI",
-    "IBE.MC", "SAN.MC", "ITX.MC", "HSBA.L", "SHEL.L", "AZN.L", "NVO", "NVS"
+    "MCFR", "OR", "TTEF", "SUP", "ASMLNL", "SAPD", "SIE", 
+    "VOW3", "ALVD", "ENEL", "RACEM", "UCG", "ISP", "ENI",
+    "IBEES", "SANE", "ITX", "HSBC", "SHELGB", "AZNL", "NVO", "NOVN"
 ]
 
 GLOBAL_MARKETS = [
