@@ -247,7 +247,7 @@ async def process_order_message(data, r, api):
                             "epic": epic,
                             "direction": direction,
                             "source": data.get("source", "TITANO_V6_SHORT"),
-                            "votes_mean": data.get("xgb_prob", data.get("prob", 0.5)),
+                            "votes_mean": data.get("prob", 0.5),
                             "size": size_pct,
                             "price": price
                         }
@@ -295,7 +295,7 @@ async def process_order_message(data, r, api):
                             "epic": epic,
                             "direction": direction,
                             "source": data.get("source", "TITANO_V6"),
-                            "votes_mean": data.get("xgb_prob", data.get("prob", 0.5)),
+                            "votes_mean": data.get("prob", 0.5),
                             "size": size_pct,
                             "price": price
                         }
