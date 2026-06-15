@@ -31,14 +31,14 @@ GLOBAL_CRYPTO = [
 ]
 
 ASIAN_STOCKS = [
-    "7203", "SNE", "7267", "TSM", "BABA", "JD", "BIDU", 
-    "INFY", "HDB", "7269", "0700"
+    "7203.T", "6758.T", "7267.T", "TSM", "BABA", "JD", "BIDU", 
+    "INFY", "HDB", "TTM", "0700.HK"
 ]
 
 EUROPEAN_STOCKS = [
-    "MCFR", "OR", "TTEF", "SUP", "ASMLNL", "SAPD", "SIE", 
-    "VOW3", "ALVD", "ENEL", "RACEM", "UCG", "ISP", "ENI",
-    "IBEES", "SANE", "ITX", "HSBC", "SHELGB", "AZNL", "NVO", "NOVN"
+    "MC.PA", "OR.PA", "TTE.PA", "SU.PA", "ASML.AS", "SAP.DE", "SIE.DE", 
+    "VOW3.DE", "ALV.DE", "ENEL.MI", "RACE.MI", "UCG.MI", "ISP.MI", "ENI.MI",
+    "IBE.MC", "SAN.MC", "ITX.MC", "HSBA.L", "SHEL.L", "AZN.L", "NVO", "NVS"
 ]
 
 GLOBAL_MARKETS = [
@@ -47,6 +47,25 @@ GLOBAL_MARKETS = [
     "EURGBP", "EURJPY", "GBPJPY", "SILVER", "COPPER", "PALLADIUM",
     "JP225", "HK50", "IN50", "AU200", "CN50", "IT40", "DE40", "FR40", "UK100", "ES35", "EU50", "US500", "US100"
 ] + ASIAN_STOCKS + EUROPEAN_STOCKS
+
+# MAPPATURA (Ticker Standard -> Capital EPIC)
+TICKER_TO_EPIC = {
+    "7203.T": "7203", "6758.T": "SNE", "7267.T": "7267", "0700.HK": "0700",
+    "MC.PA": "MCFR", "OR.PA": "OR", "TTE.PA": "TTEF", "SU.PA": "SUP", "ASML.AS": "ASMLNL",
+    "SAP.DE": "SAPD", "SIE.DE": "SIE", "VOW3.DE": "VOW3", "ALV.DE": "ALVD",
+    "ENEL.MI": "ENEL", "RACE.MI": "RACEM", "UCG.MI": "UCG", "ISP.MI": "ISP", "ENI.MI": "ENI",
+    "IBE.MC": "IBEES", "SAN.MC": "SANE", "ITX.MC": "ITX",
+    "HSBA.L": "HSBC", "SHEL.L": "SHELGB", "AZN.L": "AZNL", "NVS": "NOVN"
+}
+
+# MAPPATURA INVERSA (Capital EPIC -> Ticker Standard)
+EPIC_TO_TICKER = {v: k for k, v in TICKER_TO_EPIC.items()}
+
+def get_capital_epic(ticker: str) -> str:
+    return TICKER_TO_EPIC.get(ticker, ticker)
+
+def get_standard_ticker(epic: str) -> str:
+    return EPIC_TO_TICKER.get(epic, epic)
 
 api = CapitalComAPI()
 
@@ -61,7 +80,7 @@ async def prefill_historical_data(epic: str):
     """Precarica le ultime 30 candele a 1 minuto via REST per saltare il warm-up di 30 minuti."""
     try:
         # Chiamata REST manuale a MINUTO (Capital API base url)
-        url = f"{api.base_url}/prices/{epic}?resolution=MINUTE&max=70"
+        url = f"{api.base_url}/prices/{get_capital_epic(epic)}?resolution=MINUTE&max=70"
         import requests
         response = requests.get(url, headers=api._get_headers(with_auth=True), timeout=10)
         
@@ -167,11 +186,13 @@ async def ws_handler_fixed(socket_id: int, role: str, epics_list: list, r: aiore
                     if "payload" in data:
                         tick = data["payload"]
                         epic = tick.get("epic")
+                        if epic:
+                            standard_ticker = get_standard_ticker(epic)
                         bid = tick.get("bid")
                         ask = tick.get("ofr")
                         if epic and bid and ask:
                             mid_price = (bid + ask) / 2
-                            process_tick(epic, mid_price)
+                            process_tick(standard_ticker, mid_price)
                             
         except Exception as e:
             logger.error(f"❌ [Socket {socket_id}] Disconnesso o errore: {e}. Riconnessione...")
@@ -196,8 +217,9 @@ async def ws_handler_rotational(socket_id: int, role: str, pool: list, r: aiored
             
         try:
             async with websockets.connect(uri, additional_headers=headers, ping_interval=30, ping_timeout=10) as ws:
-                subscribe_msg = {"destination": "marketdata.subscribe", "payload": {"epics": chunk}}
-                await ws.send(json.dumps(subscribe_msg))
+                capital_epics = [get_capital_epic(e) for e in chunk]
+                payload = {"destination": "marketdata.subscribe", "payload": {"epics": capital_epics}}
+                await ws.send(json.dumps(payload))
                 
                 start_time = time.time()
                 async for message in ws:
@@ -205,11 +227,13 @@ async def ws_handler_rotational(socket_id: int, role: str, pool: list, r: aiored
                     if "payload" in data:
                         tick = data["payload"]
                         epic = tick.get("epic")
+                        if epic:
+                            standard_ticker = get_standard_ticker(epic)
                         bid = tick.get("bid")
                         ask = tick.get("ofr")
                         if epic and bid and ask:
                             mid_price = (bid + ask) / 2
-                            process_tick(epic, mid_price)
+                            process_tick(standard_ticker, mid_price)
                             
                     # Controlla se è tempo di ruotare
                     if time.time() - start_time > (rotation_minutes * 60):
@@ -240,9 +264,12 @@ async def ws_handler_portfolio(socket_id: int, r: aioredis.Redis):
                         data = json.loads(message)
                         if "payload" in data:
                             tick = data["payload"]
-                            epic, bid, ask = tick.get("epic"), tick.get("bid"), tick.get("ofr")
+                            epic = tick.get("epic")
+                            if epic:
+                                standard_ticker = get_standard_ticker(epic)
+                            bid, ask = tick.get("bid"), tick.get("ofr")
                             if epic and bid and ask:
-                                process_tick(epic, (bid + ask) / 2)
+                                process_tick(standard_ticker, (bid + ask) / 2)
 
                 async def watch_portfolio():
                     nonlocal current_epics
@@ -258,7 +285,8 @@ async def ws_handler_portfolio(socket_id: int, r: aioredis.Redis):
                                         await prefill_historical_data(e)
                                         
                                     if new_epics:
-                                        await ws.send(json.dumps({"destination": "marketdata.subscribe", "payload": {"epics": list(new_epics)}}))
+                                        capital_epics = [get_capital_epic(e) for e in list(new_epics)]
+                                        await ws.send(json.dumps({"destination": "marketdata.subscribe", "payload": {"epics": capital_epics}}))
                                         logger.info(f"🛡️ [Custode] Aggiornata sottoscrizione portafoglio: {list(new_epics)}")
                                         
                                     current_epics = new_epics
