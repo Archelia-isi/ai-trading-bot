@@ -43,10 +43,17 @@ EUROPEAN_STOCKS = [
 
 GLOBAL_MARKETS = [
     "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "GOLD", "USOIL", "NATURALGAS",
-    "NFLX", "GOOGL", "BABA", "DIS", "BA", "IBM", "INTC", "CSCO", "PEP", "KO", "WMT", "JPM", "V", "MA",
     "EURGBP", "EURJPY", "GBPJPY", "SILVER", "COPPER", "PALLADIUM",
     "JP225", "HK50", "IN50", "AU200", "CN50", "IT40", "DE40", "FR40", "UK100", "ES35", "EU50", "US500", "US100"
-] + ASIAN_STOCKS + EUROPEAN_STOCKS
+]
+
+try:
+    from global_1000 import TOP_1000_STOCKS
+    GLOBAL_MARKETS += TOP_1000_STOCKS
+except ImportError:
+    pass
+
+GLOBAL_MARKETS += ASIAN_STOCKS + EUROPEAN_STOCKS
 
 # MAPPATURA (Ticker Standard -> Capital EPIC)
 TICKER_TO_EPIC = {
