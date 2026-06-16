@@ -136,8 +136,17 @@ async def titano_loop():
             logger.critical("CRITICAL: Modello Trad_V8_Swing_10M_Master.zip non trovato. Arresto di sicurezza.")
             import sys
             sys.exit(1)
-        model = PPO.load(model_path)
-        logger.info("[SUCCESS] Cervello Master Tradizionale caricato correttamente da Trad_V8_Swing_10M_Master.zip")
+        # Rimuoviamo custom_objects incompatibili come 'use_sde' se il modello era stato salvato in modo anomalo
+        custom_objects = {
+            "use_sde": False,
+        }
+        try:
+            model = PPO.load(model_path, custom_objects=custom_objects)
+        except TypeError:
+            # Fallback se è un DQN mascherato
+            from stable_baselines3 import DQN
+            model = DQN.load(model_path, custom_objects=custom_objects)
+        logger.info("[SUCCESS] Cervello Master Tradizionale caricato correttamente da Trad_V8_Simons_10M_Master.zip")
     except SystemExit:
         raise
     except Exception as e:
