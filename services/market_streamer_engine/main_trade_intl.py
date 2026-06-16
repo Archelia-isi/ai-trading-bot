@@ -34,7 +34,7 @@ async def ping_loop(ws):
     while True:
         try:
             await asyncio.sleep(30)
-            if ws.open:
+            if True:
                 await ws.ping()
         except Exception as e:
             logger.error(f"Errore Ping: {e}")

@@ -23,6 +23,8 @@ async def get_active_binance_futures():
                     for s in symbols:
                         if s.get("status") == "TRADING" and s.get("contractType") == "PERPETUAL":
                             active_symbols.append(s.get("symbol").lower())
+                else:
+                    logger.error(f"Errore API Binance: {response.status} - {await response.text()}")
     except Exception as e:
         logger.error(f"Errore recupero simboli Binance: {e}")
     return active_symbols
@@ -32,7 +34,7 @@ async def ping_loop(ws):
     while True:
         try:
             await asyncio.sleep(30)
-            if ws.open:
+            if True:
                 # Binance responds to standard websocket pings or we can send application level ping if required
                 await ws.ping()
         except Exception as e:

@@ -19,7 +19,7 @@ async def ping_loop(ws):
     while True:
         try:
             await asyncio.sleep(30)
-            if ws.open:
+            if True:
                 # Alpaca IEX websocket responds to standard WebSocket pings
                 await ws.ping()
         except Exception as e:
