@@ -4,9 +4,6 @@ import os
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import sys
-import numpy.core
-sys.modules['numpy._core'] = numpy.core
 import gymnasium as gym
 from gymnasium import spaces
 from apscheduler.schedulers.asyncio import AsyncIOScheduler

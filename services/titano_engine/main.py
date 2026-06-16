@@ -5,9 +5,6 @@ import os
 import json
 import redis.asyncio as aioredis
 import numpy as np
-import sys
-import numpy.core
-sys.modules['numpy._core'] = numpy.core
 import pandas as pd
 import torch
 import torch.nn as nn
