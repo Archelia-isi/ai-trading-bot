@@ -131,8 +131,17 @@ async def titano_loop():
     
     try:
         model_path = os.path.join(os.path.dirname(__file__), "models", "Crypto_V8_Scalp_10M_Master.zip")
-        model = PPO.load(model_path)
-        logger.info("🧠 Modello Titano V8.3 (Sniper) caricato con successo!")
+        # Fallback a DQN se il modello non supporta use_sde (modelli salvati in DQN non accettano parametri PPO/SAC)
+        custom_objects = {
+            "use_sde": False,
+        }
+        try:
+            model = PPO.load(model_path, custom_objects=custom_objects)
+        except TypeError:
+            from stable_baselines3 import DQN
+            model = DQN.load(model_path, custom_objects=custom_objects)
+            
+        logger.info("[SUCCESS] Cervello Master caricato correttamente da AI_Master_Brain.zip")
     except Exception as e:
         logger.error(f"Errore caricamento modello: {e}")
         return

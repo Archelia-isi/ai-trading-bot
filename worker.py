@@ -131,5 +131,19 @@ async def execution_manager_loop():
             except Exception as e:
                 logger.error(f"Errore nel parsing del messaggio di root: {e}")
 
+from fastapi import FastAPI
+import uvicorn
+
+app = FastAPI()
+
+@app.get("/")
+def health_check():
+    return {"status": "Worker Online"}
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(execution_manager_loop())
+
 if __name__ == "__main__":
-    asyncio.run(execution_manager_loop())
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

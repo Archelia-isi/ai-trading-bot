@@ -1,3 +1,4 @@
+print("🚀 BOOTING AUDIT ENGINE...")
 from fastapi import FastAPI
 import asyncio
 import logging
