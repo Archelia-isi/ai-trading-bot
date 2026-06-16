@@ -17,6 +17,12 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 ALPACA_API_KEY = os.getenv("APCA_API_KEY_ID", "PK36Z7BYC46PJXLA5YWBA22QNV")
 ALPACA_SECRET_KEY = os.getenv("APCA_API_SECRET_KEY", "3gN1PUs2YSrdHFFfVs7ZQmvLT8h2RdtLJ3UyU3fSjvAL")
 
+USA_EPICS = [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "BRK.B", "LLY", "AVGO", "V",
+    "JPM", "TSLA", "WMT", "UNH", "MA", "XOM", "JNJ", "PG", "HD", "COST",
+    "ORCL", "MRK", "ABBV", "CVX", "CRM", "BAC", "NFLX", "KO", "PEP", "TMO"
+]
+
 app = FastAPI()
 
 @app.get("/")
@@ -46,8 +52,8 @@ async def alpaca_ws_loop(r: aioredis.Redis):
                 # Publish asynchronously using a fire-and-forget task to avoid blocking the callback
                 asyncio.create_task(r.publish("market_updates_global", json.dumps(payload)))
 
-            logger.info("✅ Sottoscrizione a tutte le azioni (IEX Free Tier supportato)...")
-            stream.subscribe_trades(trade_callback, "*")
+            logger.info("✅ Sottoscrizione a 30 azioni (Limite Free Tier IEX)...")
+            stream.subscribe_trades(trade_callback, *USA_EPICS)
             
             logger.info("✅ Streamer avviato in ascolto su Alpaca.")
             await stream._run_forever()
