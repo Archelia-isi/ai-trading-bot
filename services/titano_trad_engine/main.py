@@ -349,7 +349,7 @@ async def titano_loop():
                             await r.publish("execution_requests", json.dumps(req))
                             await r.publish("audit_requests", json.dumps(req))
             except Exception as e:
-                logger.error(f"Errore inferenza streaming: {e}")
+                logger.exception(f"Errore inferenza streaming:")
 
 async def system_commands_loop():
     logger.info("📡 In ascolto per comandi di sistema (Redis)...")
