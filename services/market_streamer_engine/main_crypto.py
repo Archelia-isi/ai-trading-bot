@@ -63,14 +63,19 @@ async def binance_ws_loop(r: aioredis.Redis):
                 # Auto-Heartbeat Loop
                 asyncio.create_task(ping_loop(ws))
                 
-                # Subscribe
-                subscribe_msg = json.dumps({
-                    "method": "SUBSCRIBE",
-                    "params": streams,
-                    "id": 1
-                })
-                await ws.send(subscribe_msg)
-                logger.info("✅ Iscrizione a Binance Futures completata.")
+                # Binance limita a 200 streams per messaggio SUBSCRIBE. Invio a blocchi di 100.
+                chunk_size = 100
+                for i in range(0, len(streams), chunk_size):
+                    chunk = streams[i:i+chunk_size]
+                    subscribe_msg = json.dumps({
+                        "method": "SUBSCRIBE",
+                        "params": chunk,
+                        "id": i+1
+                    })
+                    await ws.send(subscribe_msg)
+                    await asyncio.sleep(0.2)
+                
+                logger.info("✅ Iscrizione a Binance Futures completata a blocchi.")
                 
                 async for message in ws:
                     data = json.loads(message)
