@@ -27,7 +27,14 @@ ASIAN_STOCKS = [
     "INFY", "HDB", "TTM", "0700.HK"
 ]
 
-YAHOO_EPICS = EUROPEAN_STOCKS + ASIAN_STOCKS
+# Ticker USA puri senza suffisso (Decodificati come USA)
+USA_STOCKS = [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "BRK.B", "LLY", "AVGO", "V",
+    "JPM", "TSLA", "WMT", "UNH", "MA", "XOM", "JNJ", "PG", "HD", "COST",
+    "ORCL", "MRK", "ABBV", "CVX", "CRM", "BAC", "NFLX", "KO", "PEP", "TMO"
+]
+
+YAHOO_EPICS = EUROPEAN_STOCKS + ASIAN_STOCKS + USA_STOCKS
 
 async def ping_loop(ws):
     """Auto-Heartbeat per prevenire la caduta della connessione (30s)"""

@@ -76,7 +76,7 @@ class DynamicAssetResolver:
             "X-SECURITY-TOKEN": self.x_sec
         }
         
-        clean_search = ticker.split(".")[0] # ES: ENEL.MI -> ENEL
+        clean_search = ticker.split(".")[0] # ES: ENEL.MI -> ENEL, AAPL -> AAPL (USA puro)
         url = f"{self.capital_base_url}/markets?searchTerm={clean_search}"
         
         try:
