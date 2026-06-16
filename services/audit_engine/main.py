@@ -15,7 +15,7 @@ from capital_api import CapitalComAPI
 from risk_manager import DynamicAssetResolver
 
 # HARD CODE OVERRIDE: Mantiene il sistema in test per 48 ore
-DRY_RUN = True
+DRY_RUN = False
 
 def safe_float(v):
     try:
