@@ -94,9 +94,24 @@ async def yahoo_ws_loop(r: aioredis.Redis):
             await asyncio.sleep(wait_time)
             retries += 1
 
+from fastapi import FastAPI
+import uvicorn
+import os
+
+app = FastAPI()
+
+@app.get("/")
+def health_check():
+    return {"status": "INTL Streamer Online"}
+
 async def main():
     r = await aioredis.from_url(REDIS_URL, decode_responses=True)
     await yahoo_ws_loop(r)
 
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(main())
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
