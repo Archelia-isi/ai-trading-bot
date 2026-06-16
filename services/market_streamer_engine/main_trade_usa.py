@@ -14,12 +14,6 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 ALPACA_API_KEY = os.getenv("APCA_API_KEY_ID", "PK36Z7BYC46PJXLA5YWB")
 ALPACA_SECRET_KEY = os.getenv("APCA_API_SECRET_KEY", "3gN1PUs2YSrdHFFfVs7ZQmvLT8h2RdtLJ3UyU3fSjvAL")
 
-USA_EPICS = [
-    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "BRK.B", "LLY", "AVGO", "V",
-    "JPM", "TSLA", "WMT", "UNH", "MA", "XOM", "JNJ", "PG", "HD", "COST",
-    "ORCL", "MRK", "ABBV", "CVX", "CRM", "BAC", "NFLX", "KO", "PEP", "TMO"
-]
-
 async def ping_loop(ws):
     """Auto-Heartbeat per prevenire la caduta della connessione (30s)"""
     while True:
@@ -56,10 +50,10 @@ async def alpaca_ws_loop(r: aioredis.Redis):
                 auth_response = await ws.recv()
                 logger.info(f"Alpaca Auth Response: {auth_response}")
                 
-                # Subscribe to 30 trades (Free tier limit)
+                # Subscribe to ALL trades (Alpaca IEX Free Tier allows unlimited symbols)
                 subscribe_msg = json.dumps({
                     "action": "subscribe",
-                    "trades": USA_EPICS
+                    "trades": ["*"]
                 })
                 await ws.send(subscribe_msg)
                 logger.info("✅ Iscrizione ad Alpaca Firehose completata.")
