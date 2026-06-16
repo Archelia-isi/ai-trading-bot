@@ -6,6 +6,10 @@ import json
 import math
 import time
 import redis.asyncio as aioredis
+import sys
+import os
+# Assicuriamoci che python trovi i moduli locali (capital_api, risk_manager)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from capital_api import CapitalComAPI
 from risk_manager import DynamicAssetResolver
 
