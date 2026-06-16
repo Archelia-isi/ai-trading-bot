@@ -114,9 +114,10 @@ app = FastAPI()
 def health_check():
     return {"status": "streamer_crypto online"}
 
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(main())
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    # Inizia il loop in background e lancia il server dummy
-    loop = asyncio.get_event_loop()
-    loop.create_task(main())
     uvicorn.run(app, host="0.0.0.0", port=port)
