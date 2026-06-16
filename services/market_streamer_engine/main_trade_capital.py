@@ -77,7 +77,7 @@ async def capital_ws_loop(r: aioredis.Redis):
                                 "exchange": "CAPITAL",
                                 "timestamp": int(timestamp)
                             }
-                            await r.publish("market_updates_global", json.dumps(payload))
+                            await r.publish("market_updates_trade", json.dumps(payload))
                             
         except Exception as e:
             wait_time = min(0.05 * (2 ** retries), 5.0)

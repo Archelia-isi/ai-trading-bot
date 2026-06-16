@@ -91,7 +91,7 @@ async def yahoo_ws_loop(r: aioredis.Redis):
                                 "timestamp": int(timestamp)
                             }
                             # Push to Redis Memory Buffer
-                            await r.publish("market_updates_global", json.dumps(payload))
+                            await r.publish("market_updates_trade", json.dumps(payload))
                             
                     except Exception as parse_error:
                         # Non-fatal error, likely parsing
