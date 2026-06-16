@@ -26,3 +26,4 @@ APScheduler==3.10.4
 protobuf
 rapidfuzz
 alpaca-trade-api
+aiohttp
