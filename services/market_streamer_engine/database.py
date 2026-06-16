@@ -81,6 +81,11 @@ class DatabaseManager:
                         setting_key VARCHAR(50) PRIMARY KEY,
                         setting_value TEXT NOT NULL
                     );
+                    
+                    CREATE TABLE IF NOT EXISTS valid_assets_cache (
+                        epic VARCHAR(50) PRIMARY KEY,
+                        last_validated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
                 """)
             conn.commit()
             
@@ -344,6 +349,41 @@ class DatabaseManager:
                 return result
         except Exception as e:
             logger.error(f"Errore lettura candele per {epic}: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def save_valid_assets(self, valid_epics: list):
+        """Salva gli asset validati nella cache di Neon DB."""
+        conn = self._get_connection()
+        if not conn or not valid_epics: return
+        try:
+            with conn.cursor() as cur:
+                args = [(epic,) for epic in valid_epics]
+                query = """
+                    INSERT INTO valid_assets_cache (epic)
+                    VALUES %s
+                    ON CONFLICT (epic) DO UPDATE SET last_validated = CURRENT_TIMESTAMP
+                """
+                from psycopg2.extras import execute_values
+                execute_values(cur, query, args)
+            conn.commit()
+            logger.info(f"Salvato set di {len(valid_epics)} asset validi nel DB.")
+        except Exception as e:
+            logger.error(f"Errore salvataggio valid_assets_cache: {e}")
+        finally:
+            conn.close()
+
+    def get_valid_assets(self) -> list:
+        """Recupera la lista degli asset precedentemente validati da Capital.com."""
+        conn = self._get_connection()
+        if not conn: return []
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT epic FROM valid_assets_cache")
+                return [row[0] for row in cur.fetchall()]
+        except Exception as e:
+            logger.error(f"Errore recupero valid_assets_cache: {e}")
             return []
         finally:
             conn.close()

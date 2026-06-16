@@ -130,7 +130,7 @@ async def titano_loop():
     logger.info("Avviato Titano Trad Engine (V8 Swing)...")
     
     try:
-        model_path = os.path.join(os.path.dirname(__file__), "..", "..", "Trad_V8_Swing_10M_Master.zip")
+        model_path = os.path.join(os.path.dirname(__file__), "models", "Trad_V8_Simons_10M_Master.zip")
         model_path = os.path.abspath(model_path)
         if not os.path.exists(model_path):
             logger.critical("CRITICAL: Modello Trad_V8_Swing_10M_Master.zip non trovato. Arresto di sicurezza.")
@@ -329,14 +329,14 @@ async def titano_loop():
                             req = {
                                 "epic": epic, "direction": direction, "size_pct": dynamic_size, "leverage": 1, 
                                 "prob": confidence, "xgb_prob": float(correct_xgb_prob), "news_sentiment": float(news_sentiment),
-                                "source": f"TITANO_V8_{'ACCUMULO' if is_owned else 'NUOVO'}"
+                                "source": f"TITANO_V8_SIMONS_{'ACCUMULO' if is_owned else 'NUOVO'}"
                             }
                             await r.publish("execution_requests", json.dumps(req))
                             await r.publish("audit_requests", json.dumps(req))
                         else:
                             # Invia segnale FLAT anche al worker per chiudere eventuali posizioni
                             logger.info(f"🧠 [TITANO V8] {epic} -> {direction} (Confidence: {confidence*100:.1f}%)")
-                            req = {"epic": epic, "direction": "FLAT", "size_pct": 0, "prob": confidence, "source": "TITANO_V8_FLAT"}
+                            req = {"epic": epic, "direction": "FLAT", "size_pct": 0, "prob": confidence, "source": "TITANO_V8_SIMONS_FLAT"}
                             await r.publish("execution_requests", json.dumps(req))
                             await r.publish("audit_requests", json.dumps(req))
             except Exception as e:

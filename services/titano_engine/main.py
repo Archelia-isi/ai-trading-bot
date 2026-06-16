@@ -130,7 +130,7 @@ async def titano_loop():
     logger.info("Avviato Titano Engine (V8.3 Sniper)...")
     
     try:
-        model_path = os.path.join(os.path.dirname(__file__), "models", "Titano_V83_Crypto.zip")
+        model_path = os.path.join(os.path.dirname(__file__), "models", "Crypto_V8_Scalp_10M_Master.zip")
         model = PPO.load(model_path)
         logger.info("🧠 Modello Titano V8.3 (Sniper) caricato con successo!")
     except Exception as e:
@@ -321,14 +321,14 @@ async def titano_loop():
                             req = {
                                 "epic": epic, "direction": direction, "size_pct": dynamic_size, "leverage": 1, 
                                 "prob": confidence, "xgb_prob": float(correct_xgb_prob), "news_sentiment": float(news_sentiment),
-                                "source": f"TITANO_V8_{'ACCUMULO' if is_owned else 'NUOVO'}"
+                                "source": f"TITANO_V8_SCALP_{'ACCUMULO' if is_owned else 'NUOVO'}"
                             }
                             await r.publish("execution_requests", json.dumps(req))
                             await r.publish("audit_requests", json.dumps(req))
                         else:
                             # Invia segnale FLAT anche al worker per chiudere eventuali posizioni
                             logger.info(f"🧠 [TITANO V8] {epic} -> {direction} (Confidence: {confidence*100:.1f}%)")
-                            req = {"epic": epic, "direction": "FLAT", "size_pct": 0, "prob": confidence, "source": "TITANO_V8_FLAT"}
+                            req = {"epic": epic, "direction": "FLAT", "size_pct": 0, "prob": confidence, "source": "TITANO_V8_SCALP_FLAT"}
                             await r.publish("execution_requests", json.dumps(req))
                             await r.publish("audit_requests", json.dumps(req))
             except Exception as e:

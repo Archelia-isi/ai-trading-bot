@@ -22,3 +22,7 @@ scikit-learn>=1.5.0
 yfinance>=0.2.40
 numpy>=2.0.0
 APScheduler==3.10.4
+
+protobuf
+rapidfuzz
+alpaca-trade-api

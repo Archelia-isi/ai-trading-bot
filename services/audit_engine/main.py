@@ -7,6 +7,10 @@ import math
 import time
 import redis.asyncio as aioredis
 from capital_api import CapitalComAPI
+from risk_manager import DynamicAssetResolver
+
+# HARD CODE OVERRIDE: Mantiene il sistema in test per 48 ore
+DRY_RUN = True
 
 def safe_float(v):
     try:
@@ -22,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 api = CapitalComAPI()
+asset_resolver = DynamicAssetResolver()
 
 app = FastAPI(title="Execution Engine (Carta Bianca)")
 background_tasks = set()
@@ -155,9 +160,22 @@ asset_locks = {}
 last_execution_time = {}
 
 async def process_order_message(data, r, api):
-    epic = data.get("epic")
+    ticker_feed = data.get("epic")
     direction = data.get("direction")
-    size_pct = data.get("size_pct", 5.0)
+    xgb_prob = float(data.get("xgb_prob", 0.5))
+    
+    # Risoluzione Dinamica dell'Asset (Capital.com Epic)
+    epic = await asset_resolver.resolve_epic(ticker_feed)
+    if not epic:
+        logger.error(f"Impossibile risolvere Epic per {ticker_feed}. Ordine ignorato.")
+        return
+    
+    # Criterio di Kelly Dinamico (W - ((1 - W) / R)), assumendo R=1
+    kelly_fraction = xgb_prob - ((1.0 - xgb_prob) / 1.0)
+    if kelly_fraction < 0: kelly_fraction = 0.01 # Minimo 1% se sfavorevole ma passa
+    
+    # Capping tra 1% e 15% del capitale
+    size_pct = min(max(kelly_fraction * 100.0, 1.0), 15.0) if direction != "FLAT" else 0.0
     
     lock = asset_locks.setdefault(epic, asyncio.Lock())
     if lock.locked():
@@ -193,11 +211,10 @@ async def process_order_message(data, r, api):
                     logger.warning(f"🧊 Mercato Frozen per {epic} (Chiuso/Pausa). Segnale {direction} scartato per prevenire REJECTED.")
                     return
                     
-                # Check Sistema Armato all'inizio!
-                is_armed_str = await r.get("system_armed")
-                is_armed = False
-                if is_armed_str is not None:
-                    is_armed = (is_armed_str.decode('utf-8') == "true" if isinstance(is_armed_str, bytes) else is_armed_str == "true")
+                # FORZATURA SICUREZZA NUOVI CERVELLI (48h)
+                is_armed = False if DRY_RUN else is_armed
+                if DRY_RUN:
+                    logger.info("🔒 [SYSTEM] DRY_RUN_FORZATO attivo (Hardcode override): Nessun capitale reale a rischio.")
 
             if direction == "FLAT":
                 if existing_pos:
