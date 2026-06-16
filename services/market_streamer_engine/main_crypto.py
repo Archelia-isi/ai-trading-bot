@@ -100,5 +100,18 @@ async def main():
     r = await aioredis.from_url(REDIS_URL, decode_responses=True)
     await binance_ws_loop(r)
 
+from fastapi import FastAPI
+import uvicorn
+import os
+
+app = FastAPI()
+@app.get("/")
+def health_check():
+    return {"status": "streamer_crypto online"}
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    port = int(os.environ.get("PORT", 8000))
+    # Inizia il loop in background e lancia il server dummy
+    loop = asyncio.get_event_loop()
+    loop.create_task(main())
+    uvicorn.run(app, host="0.0.0.0", port=port)
