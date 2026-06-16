@@ -43,7 +43,7 @@ portfolio_state = {
     "is_trading_locked": False
 }
 
-INITIAL_CAPITAL = None # Capitale Iniziale dinamico dal broker
+INITIAL_CAPITAL = 0.0 # Capitale Iniziale dinamico dal broker
 
 async def portfolio_monitor_loop():
     logger.info("Avviato Monitor Portfolio dell'Esecutore (per la Dashboard)...")

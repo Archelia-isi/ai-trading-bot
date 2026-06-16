@@ -60,6 +60,7 @@ async def alpaca_ws_loop(r: aioredis.Redis):
                 
                 async for message in ws:
                     data = json.loads(message)
+                    logger.info(f"Alpaca Raw Msg: {data}")
                     for event in data:
                         # Evento T = Trade
                         if event.get('T') == 't':
