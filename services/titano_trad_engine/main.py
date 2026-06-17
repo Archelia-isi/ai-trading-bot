@@ -203,106 +203,23 @@ async def titano_loop():
                     # Elabora tutti gli asset ricevuti dal canale
                     # ====================================================
                         
-                    if epic not in normalizers:
-                        normalizers[epic] = LiveFeatureNormalizer()
-                        
-                    # === 16 FEATURES MASTER BLUPEPRINT ===
+                    # === ESTRAZIONE VETTORE (30, 5) PER IL MODELLO MASTER ===
                     df = pd.DataFrame(candles) # 'open', 'high', 'low', 'close', 'volume'
                     
-                    # 1. Log_Return_Norm
-                    df['Log_Return_Norm'] = (df['close'] - df['close'].shift(1)) / df['close'].shift(1)
+                    # Isola le ultime 30 candele ed estrai solo le 5 colonne base native
+                    last_30 = df.iloc[-30:]
+                    ppo_obs = last_30[['open', 'high', 'low', 'close', 'volume']].to_numpy(dtype=np.float32)
                     
-                    # 2. Volume_Norm
-                    if 'volume' in df.columns:
-                        df['Rolling_Mean_Vol_50'] = df['volume'].rolling(50).mean()
-                        df['Rolling_Std_Vol_50'] = df['volume'].rolling(50).std() + 1e-8
-                        df['Volume_Norm'] = (df['volume'] - df['Rolling_Mean_Vol_50']) / df['Rolling_Std_Vol_50']
-                    else:
-                        df['Volume_Norm'] = 0.0
-                    
-                    # 3. Volatility_Recente (ATR)
-                    atr_ind = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
-                    df['ATR'] = atr_ind.average_true_range()
-                    
-                    # 5. Regime_Market (-1, 0, 1 basato su SMA 50)
-                    df['SMA_50'] = df['close'].rolling(50).mean()
-                    df['Regime_Market'] = np.where(df['close'] > df['SMA_50'] * 1.001, 1.0, np.where(df['close'] < df['SMA_50'] * 0.999, -1.0, 0.0))
-                    
-                    # 6. Z_Score_ATR
-                    df['Rolling_Mean_ATR_50'] = df['ATR'].rolling(50).mean()
-                    df['Rolling_Std_ATR_50'] = df['ATR'].rolling(50).std() + 1e-8
-                    df['Z_Score_ATR'] = (df['ATR'] - df['Rolling_Mean_ATR_50']) / df['Rolling_Std_ATR_50']
-                    
-                    # 7. Dist_SMA
-                    df['Dist_SMA'] = (df['close'] - df['SMA_50']) / df['SMA_50']
-                    
-                    # 8. Mom_Fast (RSI / 100)
-                    rsi_ind = ta.momentum.RSIIndicator(close=df['close'], window=14)
-                    df['Mom_Fast'] = rsi_ind.rsi() / 100.0
-                    
-                    # 9. Mom_Slow_Z
-                    df['ROC_50'] = (df['close'] - df['close'].shift(50)) / df['close'].shift(50)
-                    df['Rolling_Mean_ROC_50'] = df['ROC_50'].rolling(50).mean()
-                    df['Rolling_Std_ROC_50'] = df['ROC_50'].rolling(50).std() + 1e-8
-                    df['Mom_Slow_Z'] = (df['ROC_50'] - df['Rolling_Mean_ROC_50']) / df['Rolling_Std_ROC_50']
-                    
-                    # Prendiamo l'ultima riga calcolata
-                    last_row = df.iloc[-1]
-                    
-                    f1 = float(last_row.get('Log_Return_Norm', 0.0))
-                    f2 = float(last_row.get('Volume_Norm', 0.0))
-                    f3 = float(last_row.get('ATR', 0.0))
-                    
-                    # 4. XGB_Prob (Oracolo)
+                    # Manteniamo le probabilità aggiuntive per il payload di esecuzione (worker)
                     try:
                         xgb_val = await r.get(f"xgboost_prob:{epic}")
                         xgb_prob = float(xgb_val) if xgb_val else 0.5
-                    except: xgb_prob = 0.5
-                    f4 = xgb_prob
-                    xgb_probs_map[epic] = xgb_prob # Salviamo il prob per questo epic specifico
-                    
-                    f5 = float(last_row.get('Regime_Market', 0.0))
-                    f6 = float(last_row.get('Z_Score_ATR', 0.0))
-                    f7 = float(last_row.get('Dist_SMA', 0.0))
-                    f8 = float(last_row.get('Mom_Fast', 0.5))
-                    f9 = float(last_row.get('Mom_Slow_Z', 0.0))
-                    
-                    # 10, 11: Time Sine & Cosine
-                    now = datetime.utcnow()
-                    curr_min = now.hour * 60 + now.minute
-                    f10 = float(np.sin(curr_min * (2. * np.pi / 1440.)))
-                    f11 = float(np.cos(curr_min * (2. * np.pi / 1440.)))
-                    
-                    # 12, 13, 14, 15: Posizione Corrente e Stato
-                    f12_pos = 0.0
-                    f13_pnl = 0.0
-                    f14_time_in_trade = 0.0
-                    f15_max_dd = 0.0
-                    
-                    for p in portfolio_state_cache.get("open_positions", []):
-                        if p.get("epic") == epic:
-                            direction = p.get("direction", p.get("position", {}).get("direction", "FLAT"))
-                            f12_pos = 1.0 if direction == "BUY" else -1.0
-                            entry = float(p.get("level", p.get("position", {}).get("level", 0.0)))
-                            if entry > 0:
-                                f13_pnl = ((float(last_row['close']) - entry) / entry) * f12_pos
-                            f14_time_in_trade = float(p.get("time_in_trade", 0.0))
-                            f15_max_dd = float(p.get("max_drawdown", 0.0))
-                    
-                    # 16. Step Index Norm
-                    f16_step_index = 0.5
+                    except: 
+                        xgb_prob = 0.5
+                    xgb_probs_map[epic] = xgb_prob
                     
                     # Manteniamo news_sentiment a 0.0 solo per non far crashare i logger successivi
                     news_sentiment = 0.0
-                    
-                    # Costruzione del vettore grezzo esatto (16 features in perfetto ordine)
-                    raw_features = np.array([f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12_pos, f13_pnl, f14_time_in_trade, f15_max_dd, f16_step_index], dtype=np.float32)
-                    
-                    # Evitiamo NaN spuri iniziali
-                    raw_features = np.nan_to_num(raw_features, nan=0.0)
-                    
-                    # La classe gestisce la memoria, la normalizzazione Z-Score rolling e il FrameStack (4 livelli -> 64 dims)
-                    ppo_obs = normalizers[epic].process_new_tick(raw_features)
                     
                     batch_obs.append(ppo_obs)
                     valid_assets.append(epic)
