@@ -91,13 +91,24 @@ class DynamicAssetResolver:
                             return None
                             
                         # Mappa dei nomi -> Epic per rapidfuzz
-                        market_names = {m.get("instrumentName"): m.get("epic") for m in markets}
+                        market_names = {}
+                        for m in markets:
+                            epic_key = m.get("instrumentName")
+                            epic_value = m.get("epic")
+                            if epic_key is None or epic_value is None:
+                                logger.warning(f"Mappatura fallita o incompleta per {ticker}. Salto la serializzazione.")
+                                continue
+                            market_names[epic_key] = epic_value
                         
                         # Cerchiamo un match esatto sul simbolo se possibile
                         for m in markets:
                             if m.get("epic", "").split("-")[0].upper() == clean_search.upper():
                                 found_epic = m.get("epic")
-                                self.db.save_epic_mapping(ticker, found_epic, m.get("instrumentName"))
+                                instrument_name = m.get("instrumentName")
+                                if ticker is None or found_epic is None or instrument_name is None:
+                                    logger.warning(f"Mappatura fallita o incompleta per {ticker}. Salto la serializzazione.")
+                                    return None
+                                self.db.save_epic_mapping(ticker, found_epic, instrument_name)
                                 self.epic_cache_dict[ticker] = found_epic
                                 logger.info(f"✅ Match Simbolo trovato: {ticker} -> {found_epic}")
                                 return found_epic
@@ -114,6 +125,9 @@ class DynamicAssetResolver:
                             score = best_match[1]
                             found_epic = market_names[matched_name]
                             if score >= 92 or len(clean_search) < 5: # per ticker corti tolleriamo di più
+                                if ticker is None or found_epic is None or matched_name is None:
+                                    logger.warning(f"Mappatura fallita o incompleta per {ticker}. Salto la serializzazione.")
+                                    return None
                                 self.db.save_epic_mapping(ticker, found_epic, matched_name)
                                 self.epic_cache_dict[ticker] = found_epic
                                 logger.info(f"✅ Fuzzy Match ({score}%): {ticker} -> {found_epic} ({matched_name})")
