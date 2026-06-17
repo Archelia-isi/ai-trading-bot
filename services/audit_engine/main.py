@@ -216,6 +216,13 @@ async def process_order_message(data, r, api):
                     logger.warning(f"🧊 Mercato Frozen per {epic} (Chiuso/Pausa). Segnale {direction} scartato per prevenire REJECTED.")
                     return
                     
+                # Leggi lo stato del sistema armato da Redis
+                try:
+                    is_armed_str = await r.get("system_armed")
+                    is_armed = (is_armed_str.decode("utf-8") == "true") if isinstance(is_armed_str, bytes) else (is_armed_str == "true")
+                except:
+                    is_armed = False
+                    
                 # FORZATURA SICUREZZA NUOVI CERVELLI (48h)
                 is_armed = False if DRY_RUN else is_armed
                 if DRY_RUN:
