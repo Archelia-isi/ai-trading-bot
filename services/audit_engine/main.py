@@ -350,6 +350,8 @@ async def execution_manager_loop():
                     try:
                         data = json.loads(message['data'])
                         asyncio.create_task(process_order_message(data, r, api))
+                        # Micro-pausa per throttling Capital.com
+                        await asyncio.sleep(0.25)
                     except Exception as e:
                         logger.error(f"Errore parsing messaggio: {e}")
         except Exception as e:
