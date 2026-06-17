@@ -157,8 +157,12 @@ async def titano_loop():
     r = await aioredis.from_url(REDIS_URL)
     api.authenticate()
 
+    # Avvio il candle aggregator in background thread
+    from candle_aggregator import run_aggregator
+    asyncio.create_task(run_aggregator())
+
     pubsub = r.pubsub()
-    await pubsub.subscribe("market_updates_trade")
+    await pubsub.subscribe("market_candles_stream")
     
     logger.info("📡 In attesa di dati in streaming da Market Streamer Engine (V8)...")
     

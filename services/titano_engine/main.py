@@ -150,7 +150,7 @@ async def titano_loop():
     api.authenticate()
 
     pubsub = r.pubsub()
-    await pubsub.subscribe("market_updates_crypto")
+    await pubsub.subscribe("market_candles_crypto")
     
     logger.info("📡 In attesa di dati in streaming da Market Streamer Engine (V8)...")
     

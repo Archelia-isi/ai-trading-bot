@@ -93,7 +93,7 @@ async def binance_ws_loop(r: aioredis.Redis):
                             "timestamp": int(timestamp)
                         }
                         # Push asincrono su Redis per l'Intelligenza Artificiale (Titano Engine V8)
-                        await r.publish("market_updates_crypto", json.dumps(payload))
+                        await r.publish("market_updates_global", json.dumps(payload))
                         
         except Exception as e:
             wait_time = min(0.05 * (2 ** retries), 5.0)
