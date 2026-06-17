@@ -32,7 +32,7 @@ def get_forex_commodities():
     return [
         "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
         "EURGBP", "EURJPY", "GBPJPY", "GOLD", "SILVER", "OIL_BRENT", "NATURALGAS",
-        "US30", "US100", "US500", "GER40", "UK100", "FRA40", "ITA40", "ESP35",
+        "US30", "US100", "US500", "GER40", "UK100", "^FCHI", "FTSEMIB.MI", "ESP35",
         "HK50", "^N225", "AUS200"
     ]
 

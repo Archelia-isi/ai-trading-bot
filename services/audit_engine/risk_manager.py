@@ -55,6 +55,24 @@ class DynamicAssetResolver:
         return False
 
     async def resolve_epic(self, ticker: str) -> str:
+        CORE_FALLBACK_MAP = {
+            "AAPL": "AAPL",
+            "AAOI": "AAOI",
+            "ISP.MI": "ISP",
+            "UCG.MI": "UCG",
+            "ENEL.MI": "ENEL",
+            "RACE.MI": "RACE",
+            "SIE.DE": "SIE",
+            "SAP.DE": "SAP",
+            "MC.PA": "MC",
+            "ASML.AS": "ASML",
+            "ABTS": "ABTS"
+        }
+        ticker_upper = ticker.upper()
+        if ticker_upper in CORE_FALLBACK_MAP:
+            logger.info(f"🎯 [FALLBACK HIT] Risoluzione statica immediata per {ticker_upper} -> {CORE_FALLBACK_MAP[ticker_upper]}")
+            return CORE_FALLBACK_MAP[ticker_upper]
+            
         # 1. RAM Hit (<1ms)
         if ticker in self.epic_cache_dict:
             return self.epic_cache_dict[ticker]
