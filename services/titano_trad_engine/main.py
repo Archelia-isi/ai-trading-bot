@@ -383,6 +383,8 @@ def download_model_from_drive(model_path: str):
     except Exception as e:
         logger.error(f"Errore durante il download del modello: {e}")
 
+background_tasks = set()
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Inizializzazione Titano Engine V8.3...")
@@ -394,13 +396,15 @@ async def startup_event():
     schedule_nightly_learning()
     
     # 3. Avvio Sync Portafoglio
-    asyncio.create_task(portfolio_sync_loop())
+    t1 = asyncio.create_task(portfolio_sync_loop())
     
     # 4. Avvio Loop Comandi di Sistema (per il pulsante Dashboard)
-    asyncio.create_task(system_commands_loop())
+    t2 = asyncio.create_task(system_commands_loop())
     
     # 5. Avvio Loop di Trading
-    asyncio.create_task(titano_loop())
+    t3 = asyncio.create_task(titano_loop())
+    
+    background_tasks.update({t1, t2, t3})
 
 @app.get("/")
 def health_check():
