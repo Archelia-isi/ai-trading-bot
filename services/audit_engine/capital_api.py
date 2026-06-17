@@ -11,7 +11,8 @@ class CapitalComAPI:
         self.api_key = os.getenv("CAPITAL_API_KEY")
         self.api_secret = os.getenv("CAPITAL_API_SECRET")
         self.email = os.getenv("CAPITAL_EMAIL")
-        self.base_url = "https://api-capital.backend-capital.com/api/v1"
+        # Utilizza l'ambiente Demo per i fondi virtuali
+        self.base_url = "https://demo-api-capital.backend-capital.com/api/v1"
         self.cst_token = None
         self.x_security_token = None
         self.is_authenticated = False
