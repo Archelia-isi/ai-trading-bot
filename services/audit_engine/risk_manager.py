@@ -77,7 +77,27 @@ class DynamicAssetResolver:
         if ticker in self.epic_cache_dict:
             return self.epic_cache_dict[ticker]
             
-        # 2. DB Hit (<10ms)
+        # 2. Neon Global Map Hit
+        conn = self.db._get_connection()
+        if conn:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT codice_capital_epic FROM capital_market_map WHERE UPPER(ticker_yahoo) = %s OR UPPER(ticker_binance) = %s LIMIT 1",
+                        (ticker_upper, ticker_upper)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        epic = row[0]
+                        self.epic_cache_dict[ticker] = epic
+                        logger.info(f"🎯 [NEON MAP HIT] {ticker} -> {epic}")
+                        return epic
+            except Exception as e:
+                logger.error(f"Errore query capital_market_map: {e}")
+            finally:
+                conn.close()
+
+        # 3. Old Local DB Hit (Legacy Fallback)
         mapping = self.db.get_epic_mapping(ticker)
         if mapping:
             epic = mapping['epic_capital']

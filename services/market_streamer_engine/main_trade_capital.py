@@ -13,9 +13,27 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 api = CapitalComAPI()
 
-CAPITAL_MACRO_EPICS = [
-    "GOLD", "USOIL", "NATURALGAS", "US500", "US100", "EURUSD", "GBPUSD", "USDJPY"
-]
+import psycopg2
+
+NEON_DATABASE_URL = os.getenv("NEON_DB_URL", "postgresql://neondb_owner:npg_2MxKj4zYebdv@ep-bitter-art-al3j0cxk-pooler.c-3.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
+
+async def get_authorized_capital_epics():
+    """Recupera la whitelist dei ticker Commodity/Forex dal database Neon"""
+    active_epics = []
+    try:
+        def fetch_db():
+            conn = psycopg2.connect(NEON_DATABASE_URL)
+            with conn.cursor() as cur:
+                cur.execute("SELECT codice_capital_epic FROM capital_market_map WHERE tipo_asset IN ('COMMODITY', 'FOREX') AND codice_capital_epic IS NOT NULL;")
+                rows = cur.fetchall()
+            conn.close()
+            return [r[0] for r in rows]
+            
+        active_epics = await asyncio.to_thread(fetch_db)
+        logger.info(f"Caricati {len(active_epics)} ticker COMMODITY/FOREX autorizzati da Neon DB.")
+    except Exception as e:
+        logger.error(f"Errore recupero epics da Neon DB: {e}")
+    return active_epics
 
 async def ping_loop(ws):
     """Auto-Heartbeat per prevenire la caduta della connessione (30s)"""
@@ -51,9 +69,15 @@ async def capital_ws_loop(r: aioredis.Redis):
                 # Auto-Heartbeat Loop
                 asyncio.create_task(ping_loop(ws))
                 
+                epics_list = await get_authorized_capital_epics()
+                if not epics_list:
+                    logger.warning("Nessun epic trovato, riprovo tra 10s...")
+                    await asyncio.sleep(10)
+                    continue
+
                 subscribe_msg = {
                     "destination": "marketdata.subscribe",
-                    "payload": { "epics": CAPITAL_MACRO_EPICS }
+                    "payload": { "epics": epics_list }
                 }
                 await ws.send(json.dumps(subscribe_msg))
                 logger.info("✅ Iscrizione a Capital.com completata.")

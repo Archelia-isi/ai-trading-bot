@@ -11,22 +11,27 @@ logger = logging.getLogger(__name__)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-async def get_active_binance_futures():
-    url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
+import psycopg2
+
+NEON_DATABASE_URL = os.getenv("NEON_DB_URL", "postgresql://neondb_owner:npg_2MxKj4zYebdv@ep-bitter-art-al3j0cxk-pooler.c-3.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
+
+async def get_authorized_binance_tickers():
+    """Recupera la whitelist dei ticker Crypto dal database Neon"""
     active_symbols = []
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    symbols = data.get("symbols", [])
-                    for s in symbols:
-                        if s.get("status") == "TRADING" and s.get("contractType") == "PERPETUAL":
-                            active_symbols.append(s.get("symbol").lower())
-                else:
-                    logger.error(f"Errore API Binance: {response.status} - {await response.text()}")
+        # Usiamo asyncio.to_thread per non bloccare il loop
+        def fetch_db():
+            conn = psycopg2.connect(NEON_DATABASE_URL)
+            with conn.cursor() as cur:
+                cur.execute("SELECT ticker_binance FROM capital_market_map WHERE tipo_asset = 'CRIPTO' AND ticker_binance IS NOT NULL;")
+                rows = cur.fetchall()
+            conn.close()
+            return [r[0].lower() for r in rows]
+            
+        active_symbols = await asyncio.to_thread(fetch_db)
+        logger.info(f"Caricati {len(active_symbols)} ticker CRIPTO autorizzati da Neon DB.")
     except Exception as e:
-        logger.error(f"Errore recupero simboli Binance: {e}")
+        logger.error(f"Errore recupero simboli da Neon DB: {e}")
     return active_symbols
 
 async def ping_loop(ws):
@@ -47,7 +52,7 @@ async def binance_ws_loop(r: aioredis.Redis):
     
     while True:
         try:
-            symbols = await get_active_binance_futures()
+            symbols = await get_authorized_binance_tickers()
             if not symbols:
                 logger.warning("Nessun simbolo trovato, riprovo tra 10s...")
                 await asyncio.sleep(10)

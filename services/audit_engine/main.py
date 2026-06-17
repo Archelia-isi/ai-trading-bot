@@ -169,6 +169,16 @@ async def process_order_message(data, r, api):
     direction = data.get("direction")
     xgb_prob = float(data.get("xgb_prob", 0.5))
     
+    # [SCOPE FIX TASSATIVO]: Inizializzazione is_armed ad inizio blocco funzione
+    try:
+        is_armed_str = await r.get("system_armed")
+        is_armed = (is_armed_str.decode("utf-8") == "true") if isinstance(is_armed_str, bytes) else (is_armed_str == "true")
+    except:
+        is_armed = False
+    
+    # FORZATURA SICUREZZA NUOVI CERVELLI (48h)
+    is_armed = False if DRY_RUN else is_armed
+    
     # Risoluzione Dinamica dell'Asset (Capital.com Epic)
     epic = await asset_resolver.resolve_epic(ticker_feed)
     if not epic:
@@ -216,15 +226,6 @@ async def process_order_message(data, r, api):
                     logger.warning(f"🧊 Mercato Frozen per {epic} (Chiuso/Pausa). Segnale {direction} scartato per prevenire REJECTED.")
                     return
                     
-                # Leggi lo stato del sistema armato da Redis
-                try:
-                    is_armed_str = await r.get("system_armed")
-                    is_armed = (is_armed_str.decode("utf-8") == "true") if isinstance(is_armed_str, bytes) else (is_armed_str == "true")
-                except:
-                    is_armed = False
-                    
-                # FORZATURA SICUREZZA NUOVI CERVELLI (48h)
-                is_armed = False if DRY_RUN else is_armed
                 if DRY_RUN:
                     logger.info("🔒 [SYSTEM] DRY_RUN_FORZATO attivo (Hardcode override): Nessun capitale reale a rischio.")
 

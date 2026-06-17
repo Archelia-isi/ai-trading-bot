@@ -15,27 +15,25 @@ logger = logging.getLogger(__name__)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-# Lista di base delle azioni Europee e Asiatiche
-EUROPEAN_STOCKS = [
-    "MC.PA", "OR.PA", "TTE.PA", "SU.PA", "ASML.AS", "SAP.DE", "SIE.DE", 
-    "VOW3.DE", "ALV.DE", "ENEL.MI", "RACE.MI", "UCG.MI", "ISP.MI", "ENI.MI",
-    "IBE.MC", "SAN.MC", "ITX.MC", "HSBA.L", "SHEL.L", "AZN.L", "NVO", "NVS"
-]
+import psycopg2
 
-ASIAN_STOCKS = [
-    "7203.T", "6758.T", "7267.T", "TSM", "BABA", "JD", "BIDU", 
-    "INFY", "HDB", "TTM", "0700.HK"
-]
+def get_yahoo_epics_from_neon():
+    neon_url = os.getenv("DATABASE_URL", "postgresql://neondb_owner:npg_2MxKj4zYebdv@ep-bitter-art-al3j0cxk-pooler.c-3.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
+    epics = []
+    try:
+        conn = psycopg2.connect(neon_url)
+        cur = conn.cursor()
+        cur.execute("SELECT ticker_yahoo FROM capital_market_map WHERE tipo_asset IN ('AZIONE', 'INDICE') AND ticker_yahoo IS NOT NULL")
+        for row in cur.fetchall():
+            epics.append(row[0])
+        cur.close()
+        conn.close()
+        logger.info(f"Caricati {len(epics)} asset (Azioni/Indici) da Neon DB.")
+    except Exception as e:
+        logger.error(f"Errore caricamento da Neon DB: {e}")
+    return epics
 
-# Carica dinamicamente TUTTO il mercato americano (circa 6775 azioni)
-try:
-    with open(os.path.join(os.path.dirname(__file__), "usa_tickers.json"), "r") as f:
-        USA_STOCKS = json.load(f)
-except Exception as e:
-    logger.error(f"Impossibile caricare usa_tickers.json: {e}")
-    USA_STOCKS = []
-
-YAHOO_EPICS = EUROPEAN_STOCKS + ASIAN_STOCKS + USA_STOCKS
+YAHOO_EPICS = get_yahoo_epics_from_neon()
 
 async def ping_loop(ws):
     """Auto-Heartbeat per prevenire la caduta della connessione (30s)"""

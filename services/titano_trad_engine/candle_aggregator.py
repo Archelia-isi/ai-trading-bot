@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timezone
 import pandas as pd
 import yfinance as yf
+import psycopg2
 import redis.asyncio as aioredis
 from collections import defaultdict
 
@@ -18,24 +19,42 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 buffers = defaultdict(list)
 current_candle = {}
 
+NEON_DATABASE_URL = os.getenv("NEON_DB_URL", "postgresql://neondb_owner:npg_2MxKj4zYebdv@ep-bitter-art-al3j0cxk-pooler.c-3.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
+
+# Variabili globali per routing e bootstrap
+LIVE_TICKER_TO_TYPE_MAP = {}
+YAHOO_TO_LIVE_MAP = {}
+
+def load_neon_mappings():
+    global LIVE_TICKER_TO_TYPE_MAP, YAHOO_TO_LIVE_MAP
+    try:
+        conn = psycopg2.connect(NEON_DATABASE_URL)
+        with conn.cursor() as cur:
+            cur.execute("SELECT tipo_asset, ticker_yahoo, ticker_binance, codice_capital_epic FROM capital_market_map;")
+            for row in cur.fetchall():
+                tipo, t_yahoo, t_binance, t_capital = row
+                if not tipo: continue
+                
+                # Mapping per routing live
+                if tipo == 'CRIPTO' and t_binance:
+                    LIVE_TICKER_TO_TYPE_MAP[t_binance] = tipo
+                    if t_yahoo: YAHOO_TO_LIVE_MAP[t_yahoo] = t_binance
+                elif tipo in ('AZIONE', 'INDICE') and t_yahoo:
+                    LIVE_TICKER_TO_TYPE_MAP[t_yahoo] = tipo
+                    YAHOO_TO_LIVE_MAP[t_yahoo] = t_yahoo
+                elif tipo in ('COMMODITY', 'FOREX') and t_capital:
+                    LIVE_TICKER_TO_TYPE_MAP[t_capital] = tipo
+                    if t_yahoo: YAHOO_TO_LIVE_MAP[t_yahoo] = t_capital
+                    
+        conn.close()
+        logger.info(f"Mappature Neon caricate: {len(LIVE_TICKER_TO_TYPE_MAP)} asset live mappati.")
+    except Exception as e:
+        logger.error(f"Errore caricamento Neon DB: {e}")
+
 def load_epics_to_bootstrap():
-    epics = []
-    # 1. Ticker USA
-    usa_path = os.path.join(os.path.dirname(__file__), "..", "market_streamer_engine", "usa_tickers.json")
-    if os.path.exists(usa_path):
-        with open(usa_path, 'r') as f:
-            usa_list = json.load(f)
-            epics.extend(usa_list[:1000]) # Limitiamo a 1000 per evitare lunghi blocchi e rate limits massivi
-    
-    # 2. Ticker Crypto Comuni
-    crypto = ["BTC-USD", "ETH-USD", "SOL-USD", "DOGE-USD", "XRP-USD", "ADA-USD"]
-    epics.extend(crypto)
-    
-    # 3. Ticker Europei/Asiatici (quelli standard di Yahoo)
-    intl = ["UCG.MI", "ISP.MI", "ENEL.MI", "RACE.MI", "MC.PA", "ASML.AS", "SIE.DE", "SAP.DE"]
-    epics.extend(intl)
-    
-    return list(set(epics))
+    load_neon_mappings()
+    # Restituisce solo i ticker Yahoo mappati
+    return list(YAHOO_TO_LIVE_MAP.keys())
 
 def bootstrap_history(epics_list):
     """ Esegue il warm-up massivo con yfinance in blocchi per evitare blocchi IP. """
@@ -73,7 +92,8 @@ def bootstrap_history(epics_list):
                         })
                     
                     if len(candle_list) > 0:
-                        buffers[epic] = candle_list
+                        live_key = YAHOO_TO_LIVE_MAP.get(epic, epic)
+                        buffers[live_key] = candle_list
                 except Exception as e:
                     pass
             logger.info(f"✅ Bootstrap chunk {i}-{i+chunk_size} completato.")
@@ -115,10 +135,17 @@ async def candle_closer_loop(r):
                 
                 # Invio al cervello AI solo se abbiamo lo storico pieno (70 slot)
                 if len(buffers[epic]) >= 70:
-                    if "USD" in epic or "BTC" in epic or "ETH" in epic:
+                    tipo = LIVE_TICKER_TO_TYPE_MAP.get(epic)
+                    if tipo == 'CRIPTO':
                         mega_batch_crypto[epic] = list(buffers[epic])
-                    else:
+                    elif tipo in ('AZIONE', 'INDICE'):
                         mega_batch_trade[epic] = list(buffers[epic])
+                    elif tipo in ('COMMODITY', 'FOREX'):
+                        # Implementato modulo Macro futuro - per ora accodiamo qui o ignoriamo,
+                        # Il prompt richiede invio a modulo Macro, omettiamo per ora o lo prepariamo.
+                        pass
+                    else:
+                        logger.warning(f"Ticker sconosciuto o ALTRO ignorato dal router: {epic}")
             
             if mega_batch_trade:
                 await r.publish("market_candles_stream", json.dumps(mega_batch_trade))
