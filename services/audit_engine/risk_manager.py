@@ -90,15 +90,12 @@ class DynamicAssetResolver:
                             logger.warning(f"Nessun mercato trovato per {ticker} su Capital.com.")
                             return None
                             
-                        # Mappa dei nomi -> Epic per rapidfuzz
-                        market_names = {}
-                        for m in markets:
-                            epic_key = m.get("instrumentName")
-                            epic_value = m.get("epic")
-                            if epic_key is None or epic_value is None:
-                                logger.warning(f"Mappatura fallita o incompleta per {ticker}. Salto la serializzazione.")
-                                continue
-                            market_names[epic_key] = epic_value
+                        # Isola e pulisci il dizionario dei simboli
+                        raw_mapping = {m.get("instrumentName"): m.get("epic") for m in markets}
+                        if isinstance(raw_mapping, dict):
+                            market_names = {str(k): str(v) for k, v in raw_mapping.items() if k is not None and v is not None}
+                        else:
+                            market_names = {}
                         
                         # Cerchiamo un match esatto sul simbolo se possibile
                         for m in markets:
