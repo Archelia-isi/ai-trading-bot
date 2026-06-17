@@ -227,15 +227,11 @@ async def titano_loop():
                 if len(batch_obs) > 0:
                     obs_tensor = np.stack(batch_obs)
                     azioni, _ = model.predict(obs_tensor, deterministic=True)
-                    
-                    with torch.no_grad():
-                        obs_tensor_th = torch.as_tensor(obs_tensor, device=model.device)
-                        distribution = model.policy.get_distribution(obs_tensor_th)
-                        probs = distribution.distribution.probs.cpu().numpy()
                         
                     for i, epic in enumerate(valid_assets):
                         act_val = azioni[i]
-                        confidence = float(probs[i][act_val])
+                        # Nei modelli DQN non esiste una distribution probability nativa come nel PPO
+                        confidence = 0.99 
                         
                         direction = "FLAT"
                         if act_val == 0: direction = "SELL"

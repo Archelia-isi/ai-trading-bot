@@ -3,7 +3,7 @@ import os
 import json
 import logging
 import redis.asyncio as aioredis
-import google.generativeai as genai
+from google import genai
 from core.database import DatabaseManager
 from core.capital_api import CapitalComAPI
 from datetime import datetime, timezone
@@ -15,7 +15,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=GEMINI_API_KEY)
     
 db = DatabaseManager()
 

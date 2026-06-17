@@ -96,7 +96,7 @@ async def portfolio_monitor_loop():
                     notional_usd = size_abs * market.get('offer', 1)
                     margin_usd = notional_usd / leverage
                     
-                    if portfolio_state["total_capital"] > 0:
+                    if portfolio_state["total_capital"] > 0 and leverage > 0:
                         size_pct = (notional_usd / leverage / portfolio_state["total_capital"]) * 100
                         
                     open_positions.append({
@@ -123,7 +123,7 @@ async def portfolio_monitor_loop():
                 # Calcolo PnL Storico (Dall'inizio del software)
                 total_historic_pnl_usd = portfolio_state["total_capital"] - INITIAL_CAPITAL
                 portfolio_state["historic_pnl_usd"] = safe_float(total_historic_pnl_usd)
-                portfolio_state["historic_pnl_pct"] = safe_float((total_historic_pnl_usd / INITIAL_CAPITAL) * 100)
+                portfolio_state["historic_pnl_pct"] = safe_float(0.0 if INITIAL_CAPITAL == 0 else (total_historic_pnl_usd / INITIAL_CAPITAL) * 100)
                 
                 # Calcolo PnL Giornaliero Capitalizzato (Daily Compounding)
                 try:
@@ -141,7 +141,7 @@ async def portfolio_monitor_loop():
                 portfolio_state["daily_starting_capital"] = safe_float(daily_base)
                 daily_pnl_usd = portfolio_state["total_capital"] - daily_base
                 portfolio_state["daily_pnl_usd"] = safe_float(daily_pnl_usd)
-                portfolio_state["daily_pnl_pct"] = safe_float((daily_pnl_usd / daily_base) * 100)
+                portfolio_state["daily_pnl_pct"] = safe_float(0.0 if daily_base == 0 else (daily_pnl_usd / daily_base) * 100)
             
             # Leggi stato armato per esporlo (se serve) alla UI o log
             try:

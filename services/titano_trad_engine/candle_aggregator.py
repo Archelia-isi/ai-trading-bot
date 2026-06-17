@@ -138,7 +138,7 @@ async def run_aggregator():
     
     r = await aioredis.from_url(REDIS_URL)
     pubsub = r.pubsub()
-    await pubsub.subscribe("market_updates_global")
+    await pubsub.subscribe("market_updates_global", "market_updates_crypto")
     
     asyncio.create_task(candle_closer_loop(r))
     
