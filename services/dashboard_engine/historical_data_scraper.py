@@ -108,7 +108,8 @@ class HistoricalScraper:
     def fetch_prices(self, epic, from_date, to_date):
         url = f"{CAPITAL_API_URL}/prices/{epic}?resolution=MINUTE&from={from_date.strftime('%Y-%m-%dT%H:%M:%S')}&to={to_date.strftime('%Y-%m-%dT%H:%M:%S')}"
         res = requests.get(url, headers=self.headers)
-        if res.status_code in [429, 403]: # rate limit or ban
+        if res.status_code in [400, 401, 403, 429] or "error.null.client.token" in res.text:
+            logger.warning(f"Token scaduto o limit raggiunto ({res.status_code}). Riautenticazione in corso...")
             self.handle_rate_limit()
             return self.fetch_prices(epic, from_date, to_date)
         if res.status_code != 200:
@@ -196,7 +197,12 @@ class HistoricalScraper:
                 logger.debug("Nessuna credenziale Google trovata in GOOGLE_APPLICATION_CREDENTIALS_JSON. Backup saltato.")
                 return
             
-            creds_dict = json.loads(creds_json)
+            try:
+                creds_dict = json.loads(creds_json)
+            except json.JSONDecodeError:
+                import ast
+                creds_dict = ast.literal_eval(creds_json)
+                
             credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=['https://www.googleapis.com/auth/drive'])
             service = build('drive', 'v3', credentials=credentials)
             
