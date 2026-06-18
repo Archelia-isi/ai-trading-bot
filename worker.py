@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import sys
+import subprocess
 import os
 import json
 import redis.asyncio as aioredis
@@ -143,6 +145,12 @@ def health_check():
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(execution_manager_loop())
+    try:
+        scraper_path = os.path.join(os.path.dirname(__file__), "services", "dashboard_engine", "historical_data_scraper.py")
+        subprocess.Popen([sys.executable, scraper_path])
+        logger.info("🤖 Avviato Demone Historical Data Scraper in background dal worker.")
+    except Exception as e:
+        logger.error(f"❌ Errore avvio scraper dal worker: {e}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
