@@ -218,20 +218,20 @@ class HistoricalScraper:
             file_name = f"{epic}.parquet"
             # Cerchiamo se il file esiste già per poterlo sovrascrivere
             query = f"name='{file_name}' and '{folder_id}' in parents and trashed=false"
-            results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+            results = service.files().list(q=query, spaces='drive', fields='files(id, name)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
             items = results.get('files', [])
             
             media = MediaFileUpload(local_path, mimetype='application/octet-stream', resumable=True)
             if not items:
                 # Crea nuovo file
                 file_metadata = {'name': file_name, 'parents': [folder_id]}
-                service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-                logger.info(f"☁️ Caricato nuovo file su Google Drive per {epic}")
+                service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
+                logger.info(f"☁️ Caricato nuovo file su Drive Condiviso per {epic}")
             else:
                 # Aggiorna file esistente (Sovrascrittura)
                 file_id = items[0]['id']
-                service.files().update(fileId=file_id, media_body=media).execute()
-                logger.info(f"☁️ Aggiornato (sovrascritto) file su Google Drive per {epic}")
+                service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
+                logger.info(f"☁️ Aggiornato (sovrascritto) file su Drive Condiviso per {epic}")
                 
         except Exception as e:
             logger.error(f"Errore upload su Drive per {epic}: {e}")
