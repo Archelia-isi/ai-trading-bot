@@ -6,5 +6,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Esegue il worker puro
-CMD ["python", "worker.py"]
+# Esegue il demone scraper storico
+CMD ["python", "services/dashboard_engine/historical_data_scraper.py"]
