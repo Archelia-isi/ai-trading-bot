@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import subprocess
 import asyncio
 import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -156,3 +157,11 @@ async def startup_event():
     task = asyncio.create_task(redis_listener())
     background_tasks.add(task)
     task.add_done_callback(background_tasks.discard)
+
+    # 3. Avvia lo scraper storico in background come processo separato
+    try:
+        scraper_path = os.path.join(BASE_DIR, "historical_data_scraper.py")
+        subprocess.Popen([sys.executable, scraper_path])
+        logger.info("🤖 Avviato Demone Historical Data Scraper in background.")
+    except Exception as e:
+        logger.error(f"❌ Errore avvio scraper: {e}")
