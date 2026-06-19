@@ -192,18 +192,20 @@ class HistoricalScraper:
 
     def upload_to_drive(self, epic):
         try:
-            creds_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-            if not creds_json:
-                logger.debug("Nessuna credenziale Google trovata in GOOGLE_APPLICATION_CREDENTIALS_JSON. Backup saltato.")
+            token_json = os.getenv("GOOGLE_OAUTH_TOKEN_JSON")
+            if not token_json:
+                logger.debug("Nessun token OAuth in GOOGLE_OAUTH_TOKEN_JSON. Backup saltato.")
                 return
             
+            # Parsing flessibile in caso di virgolette singole o malformazioni di Railway
             try:
-                creds_dict = json.loads(creds_json)
+                token_dict = json.loads(token_json)
             except json.JSONDecodeError:
                 import ast
-                creds_dict = ast.literal_eval(creds_json)
+                token_dict = ast.literal_eval(token_json)
                 
-            credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=['https://www.googleapis.com/auth/drive'])
+            from google.oauth2.credentials import Credentials
+            credentials = Credentials.from_authorized_user_info(token_dict, scopes=['https://www.googleapis.com/auth/drive'])
             service = build('drive', 'v3', credentials=credentials)
             
             folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
