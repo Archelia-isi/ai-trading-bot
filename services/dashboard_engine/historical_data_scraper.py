@@ -90,17 +90,32 @@ class HistoricalScraper:
             return row[0], row[1]
         return None, None
 
-    def update_checkpoint(self, epic, min_ts, max_ts):
+    def update_min_checkpoint(self, epic, min_ts):
+        if not min_ts: return
         conn = psycopg2.connect(NEON_DATABASE_URL)
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO scraper_checkpoint (epic, min_timestamp, max_timestamp, last_sync)
-            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+            INSERT INTO scraper_checkpoint (epic, min_timestamp, last_sync)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
             ON CONFLICT (epic) DO UPDATE SET
                 min_timestamp = EXCLUDED.min_timestamp,
+                last_sync = CURRENT_TIMESTAMP;
+        """, (epic, min_ts))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    def update_max_checkpoint(self, epic, max_ts):
+        if not max_ts: return
+        conn = psycopg2.connect(NEON_DATABASE_URL)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO scraper_checkpoint (epic, max_timestamp, last_sync)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (epic) DO UPDATE SET
                 max_timestamp = EXCLUDED.max_timestamp,
                 last_sync = CURRENT_TIMESTAMP;
-        """, (epic, min_ts, max_ts))
+        """, (epic, max_ts))
         conn.commit()
         cur.close()
         conn.close()
@@ -144,27 +159,53 @@ class HistoricalScraper:
         df_merged.to_parquet(filepath, index=False)
         return df_merged
 
-    def sync_backward(self, epic, min_ts):
+    def sync_backward_full(self, epic, min_ts):
         target_years = 5
         target_date = datetime.utcnow() - timedelta(days=365*target_years)
-        if min_ts and min_ts.replace(tzinfo=None) <= target_date:
-            return min_ts # Già raggiunto l'obiettivo retrospettivo
+        
+        current_min_ts = min_ts
+        empty_fetches_in_a_row = 0
+        blocks = 0
+        
+        if current_min_ts and current_min_ts.replace(tzinfo=None) <= target_date:
+            return current_min_ts
             
-        current_to = min_ts.replace(tzinfo=None) if min_ts else datetime.utcnow()
-        # Chiediamo un blocco di 16 ore (960 minuti < 1000 limit di Capital.com)
-        current_from = current_to - timedelta(hours=16) 
-        
-        logger.info(f"[{epic}] BACKWARD: {current_from.strftime('%Y-%m-%d %H:%M')} -> {current_to.strftime('%H:%M')}")
-        df = self.fetch_prices(epic, current_from, current_to)
-        self.api_sleep()
-        
-        if df is not None and not df.empty:
-            actual_min = df["datetime"].min()
-            self.merge_and_save_parquet(epic, df)
-            return actual_min
-        else:
-            # Mercato chiuso o gap temporale, abbassiamo artificialmente il min_ts per saltare il buco
-            return current_from
+        logger.info(f"[{epic}] Avvio Deep Sync Backward fino a 5 anni...")
+        while True:
+            if current_min_ts and current_min_ts.replace(tzinfo=None) <= target_date:
+                logger.info(f"[{epic}] Obiettivo 5 anni raggiunto!")
+                break
+                
+            current_to = current_min_ts.replace(tzinfo=None) if current_min_ts else datetime.utcnow()
+            current_from = current_to - timedelta(hours=16)
+            
+            logger.info(f"[{epic}] BACKWARD DEEP: {current_from.strftime('%Y-%m-%d %H:%M')} -> {current_to.strftime('%H:%M')}")
+            df = self.fetch_prices(epic, current_from, current_to)
+            self.api_sleep()
+            
+            if df is not None and not df.empty:
+                current_min_ts = df["datetime"].min()
+                self.merge_and_save_parquet(epic, df)
+                empty_fetches_in_a_row = 0
+            else:
+                current_min_ts = current_from
+                empty_fetches_in_a_row += 1
+                
+            blocks += 1
+            if blocks % 20 == 0:
+                logger.info(f"[{epic}] Salvataggio intermedio checkpoint e drive (blocco {blocks})")
+                self.update_min_checkpoint(epic, current_min_ts)
+                self.upload_to_drive(epic)
+                
+            if empty_fetches_in_a_row >= 21: # 14 giorni senza dati -> fine storico
+                logger.info(f"[{epic}] Storico esaurito per questo asset (14 giorni senza dati).")
+                current_min_ts = target_date
+                break
+                
+        # Salvataggio finale
+        self.update_min_checkpoint(epic, current_min_ts)
+        self.upload_to_drive(epic)
+        return current_min_ts
 
     def sync_forward(self, epic, max_ts):
         if not max_ts: return None
@@ -240,24 +281,37 @@ class HistoricalScraper:
 
     def run_daemon(self):
         logger.info("🤖 Avvio Historical Data Scraper Daemon...")
+        target_years = 5
+        
         while True:
             epics = self.get_target_epics()
             logger.info(f"🔄 Inizio scansione globale su {len(epics)} asset.")
             
+            # FASE 1: Sync FORWARD per tutti gli asset
+            logger.info("⏩ Inizio FASE FORWARD globale...")
             for epic in epics:
                 min_ts, max_ts = self.get_checkpoint(epic)
+                # Fallback: se non c'è max_ts, si parte da 1 giorno fa per il forward veloce
+                new_max_ts = self.sync_forward(epic, max_ts if max_ts else (datetime.utcnow() - timedelta(days=1)))
                 
-                # FASE 1: Download Retrospettivo
-                new_min_ts = self.sync_backward(epic, min_ts)
-                
-                # FASE 2: Aggiornamento in Avanti
-                new_max_ts = self.sync_forward(epic, max_ts if max_ts else new_min_ts)
-                
-                # Update Neon DB
-                if new_min_ts or new_max_ts:
-                    self.update_checkpoint(epic, new_min_ts, new_max_ts)
-                    # Sync Cloud
+                if new_max_ts and new_max_ts != max_ts:
+                    self.update_max_checkpoint(epic, new_max_ts)
                     self.upload_to_drive(epic)
+            
+            # FASE 2: Sync BACKWARD profondo per un sottoinsieme di asset
+            logger.info("⏪ Inizio FASE BACKWARD (Deep Sync per 5 asset)...")
+            target_date = datetime.utcnow() - timedelta(days=365*target_years)
+            
+            pending_epics = []
+            for epic in epics:
+                min_ts, _ = self.get_checkpoint(epic)
+                if not min_ts or min_ts.replace(tzinfo=None) > target_date:
+                    pending_epics.append((epic, min_ts))
+                    
+            logger.info(f"Asset che necessitano ancora di storico: {len(pending_epics)}")
+            
+            for epic, min_ts in pending_epics[:5]:
+                self.sync_backward_full(epic, min_ts)
                 
             logger.info("💤 Ciclo globale completato. Pausa di cortesia di 15 minuti...")
             time.sleep(900)
